@@ -140,7 +140,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 /* CARD & INPUT */
 .form-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; margin-bottom: 14px; }
 
-/* SEARCH BAR - STICKY DI ATAS SCANNER */
+/* SEARCH BAR */
 .search-sticky {
   margin-bottom: 12px;
   position: sticky;
@@ -154,7 +154,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   margin-bottom: 0;
 }
 
-/* SEARCH RESULTS SCROLL */
 .search-results {
   max-height: 300px;
   overflow-y: auto;
@@ -207,7 +206,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .ri-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ri-meta { font-size: 11px; color: var(--text-2); margin-top: 2px; }
 
-/* SKU TAG */
 .sku-tag {
   display: inline-block;
   background: var(--magenta-light);
@@ -272,7 +270,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   pointer-events: none;
 }
 
-/* NOT REGISTERED CARD */
 .not-registered {
   border: 2px solid #fca5a5 !important;
   background: #fef2f2 !important;
@@ -356,7 +353,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   margin-left: 8px;
 }
 
-/* KETENTUAN TARIK INFO */
 .ketentuan-info {
   display: inline-block;
   background: #fef3c7;
@@ -441,13 +437,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   <div class="panel active" id="panelInput">
     <div class="form-card" id="formCard">
       
-      <!-- SEARCH BAR -->
       <div class="search-sticky">
         <input class="inp" id="searchProduct" placeholder="🔍 Cari SKU, nama barang, atau barcode" oninput="searchProductList(this.value)">
         <div id="searchResults"></div>
       </div>
 
-      <!-- SCANNER -->
       <div class="scan-area" onclick="openScanner()" id="scanArea">
         <span class="scan-area-icon">📷</span>
         <span class="scan-area-text">Scan Barcode</span>
@@ -477,7 +471,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     <div id="pullList"></div>
   </div>
 
-  <!-- PANEL EXPIRED HARI INI -->
   <div class="panel" id="panelExpToday">
     <div class="section-label">📅 BARANG YANG EXPIRED HARI INI</div>
     <div id="expTodayList"></div>
@@ -486,8 +479,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 
 <script>
 // KONFIGURASI SUMBER DATA
-const PROXY_URL = "/api/proxy"; 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxtb8St01Oast26GQOFAh6H1BUVdpXmdSqMGc3R85teZMPvbeIXcP4DPXTk5GBQI5tW/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoRnzRYCyoIj9MAyeO0jfYEOahsc7a4IWwcLK5LAMUQeCDt7t-A4r73ee7qh89gf7e/exec";
 const API_TOKEN = "MAGENTA_AEON_2024";
 const SPREADSHEET_ID = "1djq5Vrrlr-ePGsG2TuJCxyGjoVAUp0mbz0zwZRlF3dE";
 
@@ -507,9 +499,7 @@ let offlineQueue = [];
 // ========== FUNGSI NORMALISASI BARCODE ==========
 function normalizeBarcode(barcode) {
   if (!barcode) return '';
-  return String(barcode)
-    .trim()
-    .replace(/[^0-9]/g, '');
+  return String(barcode).trim().replace(/[^0-9]/g, '');
 }
 
 // ========== SESSION TIMEOUT ==========
@@ -543,8 +533,7 @@ function resetInactivityTimer() {
   }, INACTIVITY_DURATION);
 }
 
-const resetEvents = ['click', 'mousemove', 'keypress', 'scroll', 'touchstart', 'touchend', 'focus', 'input'];
-resetEvents.forEach(event => {
+['click', 'mousemove', 'keypress', 'scroll', 'touchstart', 'touchend', 'focus', 'input'].forEach(event => {
   document.addEventListener(event, resetInactivityTimer);
 });
 resetInactivityTimer();
@@ -632,19 +621,28 @@ function getProductInfo(barcode) {
 
 function loadCache() {
   try {
-    const dbRaw = localStorage.getItem('cache_db_magenta_v2'), inRaw = localStorage.getItem('cache_in_magenta_v2'), chkRaw = localStorage.getItem('cache_checked_magenta_v2');
+    const dbRaw = localStorage.getItem('cache_db_magenta_v3'), 
+          inRaw = localStorage.getItem('cache_in_magenta_v3'), 
+          chkRaw = localStorage.getItem('cache_checked_magenta_v3');
     const now = Date.now();
-    dbItems = (dbRaw && (now - parseInt(localStorage.getItem('cache_db_ts_magenta_v2') || '0')) < CACHE_TTL_MS) ? JSON.parse(dbRaw) : [];
-    inItems = (inRaw && (now - parseInt(localStorage.getItem('cache_in_ts_magenta_v2') || '0')) < CACHE_TTL_MS) ? JSON.parse(inRaw) : [];
+    dbItems = (dbRaw && (now - parseInt(localStorage.getItem('cache_db_ts_magenta_v3') || '0')) < CACHE_TTL_MS) ? JSON.parse(dbRaw) : [];
+    inItems = (inRaw && (now - parseInt(localStorage.getItem('cache_in_ts_magenta_v3') || '0')) < CACHE_TTL_MS) ? JSON.parse(inRaw) : [];
     checkedRows = new Set(chkRaw ? JSON.parse(chkRaw) : []);
-    const queueRaw = localStorage.getItem('offline_queue_magenta_v2');
+    const queueRaw = localStorage.getItem('offline_queue_magenta_v3');
     if (queueRaw) offlineQueue = JSON.parse(queueRaw);
   } catch(e) { dbItems = []; inItems = []; checkedRows = new Set(); offlineQueue = []; }
 }
 
-function saveCache(key, data) { localStorage.setItem(key + '_magenta_v2', JSON.stringify(data)); localStorage.setItem(key + '_ts_magenta_v2', Date.now().toString()); }
-function saveOfflineQueue() { localStorage.setItem('offline_queue_magenta_v2', JSON.stringify(offlineQueue)); }
+function saveCache(key, data) { 
+  localStorage.setItem(key + '_magenta_v3', JSON.stringify(data)); 
+  localStorage.setItem(key + '_ts_magenta_v3', Date.now().toString()); 
+}
 
+function saveOfflineQueue() { 
+  localStorage.setItem('offline_queue_magenta_v3', JSON.stringify(offlineQueue)); 
+}
+
+// ========== FUNGSI API (POST METHOD UNTUK HINDARI CORS) ==========
 async function callApi(params, body = null) {
   if (!isOnline) {
     if (body && params.action === "addInput") {
@@ -655,20 +653,40 @@ async function callApi(params, body = null) {
     }
     throw new Error("Tidak ada koneksi internet");
   }
+  
   try {
-    const url = APPS_SCRIPT_URL + "?" + new URLSearchParams(params);
-    const options = { 
-      method: body ? 'POST' : 'GET', 
-      headers: {'Content-Type':'application/json'},
-      body: body ? JSON.stringify(body) : null 
-    };
-    const res = await fetch(url, options);
+    const formData = new URLSearchParams();
+    formData.append('action', params.action);
+    formData.append('token', API_TOKEN);
+    
+    if (body) {
+      Object.keys(body).forEach(key => {
+        formData.append(key, body[key]);
+      });
+    }
+    
+    console.log("POST:", APPS_SCRIPT_URL, formData.toString());
+    
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP Error: ${res.status}`);
+    }
+    
     const json = await res.json();
+    
     if (json.error) throw new Error(json.error);
     return json;
+    
   } catch(e) {
     console.error("API Error:", e);
-    throw e;
+    throw new Error("Gagal terhubung: " + e.message);
   }
 }
 
@@ -794,20 +812,24 @@ async function loadAll() {
   const syncBtn = document.getElementById('syncBtn');
   syncBtn.innerText = "Sync..."; syncBtn.disabled = true;
   try {
-    const [dbRes, inRes] = await Promise.all([callApi({action:"getDatabase", token: API_TOKEN}), callApi({action:"getInputs", token: API_TOKEN})]);
+    const [dbRes, inRes] = await Promise.all([
+      callApi({action: "getDatabase"}), 
+      callApi({action: "getInputs"})
+    ]);
     
     dbItems = (dbRes.data || []).map(item => ({
       ...item,
       sku: item.sku || '',
       barcode: item.barcode || '',
       description: item.description || '',
-      hMinus: parseInt(item.hMinus || item['hMinus'] || 0)
+      hMinus: parseInt(item.hMinus || 0)
     }));
     
     databaseData = dbItems;
     inItems = inRes.data || [];
     
-    saveCache('cache_db', dbItems); saveCache('cache_in', inItems);
+    saveCache('cache_db', dbItems); 
+    saveCache('cache_in', inItems);
     renderRecent(); renderPullList(); renderExpTodayList(); buildLokasiHistory(); updateTabBadges();
     showToast("✅ Data berhasil disinkronkan", "success");
   } catch(e) { 
@@ -843,10 +865,9 @@ async function submitInput() {
       sku: sku,
       description: d, 
       expiredDate: e, 
-      lokasi: l,
-      token: API_TOKEN
+      lokasi: l
     };
-    const res = await callApi({ action:"addInput", token: API_TOKEN }, payload);
+    const res = await callApi({ action: "addInput" }, payload);
     if (res.offline) {
       inItems.push({ rowIndex: res.rowIndex, barcode: b, sku: sku, description: d, expiredDate: e, lokasi: l, timestamp: getTodayStr(), offline: true });
       saveCache('cache_in', inItems);
@@ -947,7 +968,7 @@ function renderPullList() {
 
 function toggleCheck(idx) {
   if (checkedRows.has(idx)) checkedRows.delete(idx); else checkedRows.add(idx);
-  localStorage.setItem('cache_checked_magenta_v2', JSON.stringify([...checkedRows]));
+  localStorage.setItem('cache_checked_magenta_v3', JSON.stringify([...checkedRows]));
   renderPullList();
 }
 
@@ -1107,15 +1128,6 @@ function toggleContact(id) {
 
 function openWA(number) { window.open('https://wa.me/' + number, '_blank'); }
 function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// PWA Service Worker Registration
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').then(reg => {
-    console.log('Service Worker registered:', reg);
-  }).catch(err => {
-    console.log('Service Worker registration failed:', err);
-  });
-}
 
 window.onload = () => {
   document.getElementById('headerDate').innerText = formatDateIndo(getTodayStr());
