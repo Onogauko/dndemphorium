@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Admin Panel - Expired Control D&D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --magenta: #c026d3;
+  --magenta-light: #fae8ff;
+  --magenta-mid: #d946ef;
+  --red: #dc2626;
+  --red-light: #fee2e2;
+  --green: #059669;
+  --surface: #ffffff;
+  --bg: #fdf4ff;
+  --border: #f0e0f7;
+  --text: #1c1033;
+  --text-2: #6b7280;
+  --text-3: #c084fc;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); max-width: 430px; margin: 0 auto; min-height: 100vh; }
+
+.header { background: var(--magenta); padding: 50px 20px 20px; }
+.header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.header-title { color: #fff; font-size: 20px; font-weight: 600; }
+.header-sub { color: rgba(255,255,255,0.55); font-size: 12px; margin-top: 2px; }
+.back-btn { background: rgba(255,255,255,0.15); border: none; color: white; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.back-btn:hover { background: rgba(255,255,255,0.25); }
+
+.main { padding: 16px; }
+.inp { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 11px 13px; font-size: 13px; margin-bottom: 8px; outline: none; font-family: 'DM Sans', sans-serif; }
+.inp:focus { border-color: var(--magenta-mid); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-box { background: white; border-radius: 12px; padding: 12px; text-align: center; border: 1px solid var(--border); }
+.stat-number { font-size: 28px; font-weight: 700; color: var(--magenta); }
+.stat-label { font-size: 11px; color: var(--text-2); }
+
+.search-box { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px; padding: 12px; font-size: 14px; margin-bottom: 16px; outline: none; font-family: 'DM Sans', sans-serif; }
+.search-box:focus { border-color: var(--magenta-mid); }
+
+.data-item { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 10px; transition: all 0.2s; }
+.data-item:hover { border-color: var(--magenta-mid); }
+.data-name { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.data-barcode { font-size: 11px; color: var(--text-2); margin-bottom: 6px; font-family: 'DM Mono', monospace; }
+.data-detail { font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+.data-actions { display: flex; gap: 8px; }
+.btn-edit { flex: 1; background: var(--magenta-light); border: none; border-radius: 8px; padding: 8px; font-size: 12px; font-weight: 600; color: var(--magenta); cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-edit:active { background: var(--magenta-mid); color: white; }
+.btn-delete { flex: 1; background: var(--red-light); border: none; border-radius: 8px; padding: 8px; font-size: 12px; font-weight: 600; color: var(--red); cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-delete:active { background: var(--red); color: white; }
+.btn-add { background: var(--magenta); color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 600; cursor: pointer; margin-bottom: 16px; font-family: 'DM Sans', sans-serif; }
+.btn-add:active { background: var(--magenta-mid); }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 150; display: none; align-items: flex-end; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal-card { background: white; width: 100%; max-width: 430px; border-radius: 20px 20px 0 0; padding: 20px; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-weight: 700; font-size: 18px; margin-bottom: 20px; color: var(--magenta); }
+.modal-field { margin-bottom: 16px; }
+.modal-field label { font-size: 12px; font-weight: 600; color: var(--text-2); display: block; margin-bottom: 6px; }
+.modal-field input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; font-size: 14px; outline: none; font-family: 'DM Sans', sans-serif; }
+.modal-field input:focus { border-color: var(--magenta-mid); }
+.modal-actions { display: flex; gap: 12px; margin-top: 24px; }
+.btn-cancel { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-save { flex: 1; background: var(--magenta); border: none; border-radius: 10px; padding: 12px; font-weight: 600; color: white; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-save:active { background: var(--magenta-mid); }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tab-btn { flex: 1; background: white; border: 1.5px solid var(--border); border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text-2); font-family: 'DM Sans', sans-serif; }
+.tab-btn.active { background: var(--magenta); color: white; border-color: var(--magenta); }
+
+.pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+.page-btn { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.page-btn.active { background: var(--magenta); color: white; border-color: var(--magenta); }
+
+.empty-state { text-align: center; padding: 48px 20px; color: var(--text-2); }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1c1033; color: white; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 600; z-index: 1000; transition: transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1); }
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.success { background: #065f46; }
+.toast.error { background: #7f1d1d; }
+
+.sku-tag {
+  display: inline-block;
+  background: var(--magenta-light);
+  color: var(--magenta);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 6px;
+}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal-card">
+    <div class="modal-title">🔐 Login Admin Panel</div>
+    <div class="modal-field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Masukkan password admin" onkeypress="if(event.key==='Enter') doLogin()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="window.location.href='index.html'">← Kembali</button>
+      <button class="btn-save" onclick="doLogin()">Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT INPUT MODAL -->
+<div class="modal-overlay" id="modalEditInput">
+  <div class="modal-card">
+    <div class="modal-title">✏️ Edit Data Input</div>
+    <div class="modal-field">
+      <label>Barcode</label>
+      <input type="text" id="editInputBarcode" readonly style="background:#f0f0f0;">
+    </div>
+    <div class="modal-field">
+      <label>SKU</label>
+      <input type="text" id="editInputSKU" readonly style="background:#f0f0f0;">
+    </div>
+    <div class="modal-field">
+      <label>Nama Barang</label>
+      <input type="text" id="editInputDesc">
+    </div>
+    <div class="modal-field">
+      <label>Tanggal Expired</label>
+      <input type="date" id="editInputExp">
+    </div>
+    <div class="modal-field">
+      <label>Lokasi</label>
+      <input type="text" id="editInputLokasi">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modalEditInput')">Batal</button>
+      <button class="btn-save" onclick="saveEditInput()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT DATABASE MODAL -->
+<div class="modal-overlay" id="modalEditDatabase">
+  <div class="modal-card">
+    <div class="modal-title">✏️ Edit Database</div>
+    <input type="hidden" id="editDbOldBarcode">
+    <div class="modal-field">
+      <label>SKU</label>
+      <input type="text" id="editDbSKU">
+    </div>
+    <div class="modal-field">
+      <label>Barcode</label>
+      <input type="text" id="editDbBarcode">
+    </div>
+    <div class="modal-field">
+      <label>Nama Barang</label>
+      <input type="text" id="editDbDesc">
+    </div>
+    <div class="modal-field">
+      <label>Ketentuan Tarik (H-)</label>
+      <input type="number" id="editDbTarik" min="0" placeholder="Contoh: 7 untuk H-7">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modalEditDatabase')">Batal</button>
+      <button class="btn-save" onclick="saveEditDatabase()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD DATABASE MODAL -->
+<div class="modal-overlay" id="modalAddDatabase">
+  <div class="modal-card">
+    <div class="modal-title">➕ Tambah Database Baru</div>
+    <div class="modal-field">
+      <label>SKU</label>
+      <input type="text" id="addDbSKU" placeholder="Masukkan SKU">
+    </div>
+    <div class="modal-field">
+      <label>Barcode</label>
+      <input type="text" id="addDbBarcode" placeholder="Masukkan barcode">
+    </div>
+    <div class="modal-field">
+      <label>Nama Barang</label>
+      <input type="text" id="addDbDesc" placeholder="Masukkan nama barang">
+    </div>
+    <div class="modal-field">
+      <label>Ketentuan Tarik (H-)</label>
+      <input type="number" id="addDbTarik" min="0" placeholder="Contoh: 7 untuk H-7">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modalAddDatabase')">Batal</button>
+      <button class="btn-save" onclick="saveAddDatabase()">Tambah</button>
+    </div>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="header-title">⚙️ Admin Panel</div>
+      <div class="header-sub">Manajemen Database & Data Input</div>
+    </div>
+    <button class="back-btn" onclick="window.location.href='index.html'">← Kembali</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('inputs')">📋 Data Input</button>
+    <button class="tab-btn" onclick="switchTab('database')">🗄️ Database Master</button>
+  </div>
+
+  <div id="tabInputs">
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-number" id="totalInputs">0</div><div class="stat-label">Total Input</div></div>
+      <div class="stat-box"><div class="stat-number" id="todayInputs">0</div><div class="stat-label">Input Hari Ini</div></div>
+    </div>
+    <input type="text" class="search-box" id="searchInputs" placeholder="🔍 Cari barcode, SKU, atau nama barang..." oninput="renderInputs()">
+    <div id="inputsList"></div>
+    <div id="inputsPagination" class="pagination"></div>
+  </div>
+
+  <div id="tabDatabase" style="display:none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div style="font-size: 12px; color: var(--text-2);">Total: <strong id="totalDatabase">0</strong> item</div>
+      <button class="btn-add" onclick="openAddDatabaseModal()">+ Tambah Database</button>
+    </div>
+    <input type="text" class="search-box" id="searchDatabase" placeholder="🔍 Cari barcode, SKU, atau nama barang..." oninput="renderDatabase()">
+    <div id="databaseList"></div>
+    <div id="databasePagination" class="pagination"></div>
+  </div>
+</div>
+
+<script>
+// KONFIGURASI
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoRnzRYCyoIj9MAyeO0jfYEOahsc7a4IWwcLK5LAMUQeCDt7t-A4r73ee7qh89gf7e/exec";
+const API_TOKEN = "MAGENTA_AEON_2024";
+const ADMIN_PASSWORD = "admin123";
+const SPREADSHEET_ID = "1djq5Vrrlr-ePGsG2TuJCxyGjoVAUp0mbz0zwZRlF3dE";
+
+let inputsData = [];
+let databaseData = [];
+let inputsPage = 1;
+let databasePage = 1;
+const ITEMS_PER_PAGE = 20;
+let currentEditInput = null;
+let currentEditDb = null;
+let isLoggedIn = false;
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.innerText = msg; t.className = 'toast show ' + type;
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function getTodayStr() {
+  const now = new Date();
+  const jakarta = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  return `${jakarta.getFullYear()}-${String(jakarta.getMonth()+1).padStart(2,'0')}-${String(jakarta.getDate()).padStart(2,'0')}`;
+}
+
+function formatDateIndo(raw) {
+  if (!raw) return '-';
+  const parts = raw.split('-');
+  if (parts.length !== 3) return raw;
+  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return `${parseInt(parts[2])} ${months[parseInt(parts[1])-1]} ${parts[0]}`;
+}
+
+// ========== API CALL DENGAN POST ==========
+async function callApi(params, body = null) {
+  try {
+    const formData = new URLSearchParams();
+    formData.append('action', params.action);
+    formData.append('token', API_TOKEN);
+    
+    if (body) {
+      Object.keys(body).forEach(key => {
+        formData.append(key, body[key]);
+      });
+    }
+    
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString()
+    });
+    
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    return json;
+  } catch(e) {
+    console.error("API Error:", e);
+    throw e;
+  }
+}
+
+async function loadAllData() {
+  try {
+    const [dbRes, inRes] = await Promise.all([
+      callApi({ action: "getDatabase" }),
+      callApi({ action: "getInputs" })
+    ]);
+    databaseData = dbRes.data || [];
+    inputsData = inRes.data || [];
+    document.getElementById('totalDatabase').innerText = databaseData.length;
+    updateStats();
+    renderInputs();
+    renderDatabase();
+    showToast("✅ Data berhasil dimuat", "success");
+  } catch(e) {
+    showToast("❌ Gagal load data: " + e.message, "error");
+  }
+}
+
+function updateStats() {
+  const today = getTodayStr();
+  const todayInputs = inputsData.filter(i => (i.timestamp || "").startsWith(today)).length;
+  document.getElementById('totalInputs').innerText = inputsData.length;
+  document.getElementById('todayInputs').innerText = todayInputs;
+}
+
+function renderInputs() {
+  const search = document.getElementById('searchInputs')?.value.toLowerCase() || '';
+  let filtered = [...inputsData];
+  if (search) {
+    filtered = filtered.filter(item => 
+      (item.barcode || '').toLowerCase().includes(search) ||
+      (item.description || '').toLowerCase().includes(search) ||
+      (item.sku || '').toLowerCase().includes(search)
+    );
+  }
+  filtered.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  if (inputsPage > totalPages && totalPages > 0) inputsPage = totalPages;
+  if (inputsPage < 1) inputsPage = 1;
+  const start = (inputsPage - 1) * ITEMS_PER_PAGE;
+  const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+  
+  const container = document.getElementById('inputsList');
+  if (paginated.length === 0) {
+    container.innerHTML = `<div class="empty-state">📭 Tidak ada data input</div>`;
+  } else {
+    container.innerHTML = paginated.map(item => {
+      const skuTag = item.sku ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>` : '';
+      return `
+      <div class="data-item">
+        <div class="data-name">${skuTag}${escHtml(item.description || item.barcode)}</div>
+        <div class="data-barcode">📦 ${escHtml(item.barcode)}</div>
+        <div class="data-detail">📅 Exp: ${formatDateIndo(item.expiredDate)} &nbsp;|&nbsp; 📍 ${escHtml(item.lokasi || '-')}</div>
+        <div class="data-detail" style="font-size:10px;">🕐 ${item.timestamp || '-'}</div>
+        <div class="data-actions">
+          <button class="btn-edit" onclick='openEditInputModal(${JSON.stringify(item).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})'>✏️ Edit</button>
+          <button class="btn-delete" onclick="deleteInput(${item.rowIndex})">🗑️ Hapus</button>
+        </div>
+      </div>
+    `}).join('');
+  }
+  renderPagination('inputsPagination', totalPages, inputsPage, (page) => { inputsPage = page; renderInputs(); });
+}
+
+function renderDatabase() {
+  const search = document.getElementById('searchDatabase')?.value.toLowerCase() || '';
+  let filtered = [...databaseData];
+  if (search) {
+    filtered = filtered.filter(item => 
+      (item.barcode || '').toLowerCase().includes(search) ||
+      (item.description || '').toLowerCase().includes(search) ||
+      (item.sku || '').toLowerCase().includes(search)
+    );
+  }
+  filtered.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
+  
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  if (databasePage > totalPages && totalPages > 0) databasePage = totalPages;
+  if (databasePage < 1) databasePage = 1;
+  const start = (databasePage - 1) * ITEMS_PER_PAGE;
+  const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+  
+  const container = document.getElementById('databaseList');
+  if (paginated.length === 0) {
+    container.innerHTML = `<div class="empty-state">🗄️ Tidak ada data database</div>`;
+  } else {
+    container.innerHTML = paginated.map(item => {
+      const skuTag = item.sku ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>` : '';
+      return `
+      <div class="data-item">
+        <div class="data-name">${skuTag}${escHtml(item.description)}</div>
+        <div class="data-barcode">🔖 ${escHtml(item.barcode)}</div>
+        <div class="data-detail">⏰ Ketentuan Tarik: <strong>H-${item.hMinus || 0}</strong></div>
+        <div class="data-actions">
+          <button class="btn-edit" onclick='openEditDatabaseModal(${JSON.stringify(item).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})'>✏️ Edit</button>
+          <button class="btn-delete" onclick="deleteDatabase('${item.barcode.replace(/'/g, "\\'")}')">🗑️ Hapus</button>
+        </div>
+      </div>
+    `}).join('');
+  }
+  document.getElementById('totalDatabase').innerText = filtered.length;
+  renderPagination('databasePagination', totalPages, databasePage, (page) => { databasePage = page; renderDatabase(); });
+}
+
+function renderPagination(containerId, totalPages, currentPage, onPageChange) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (totalPages <= 1) { container.innerHTML = ''; return; }
+  
+  let html = '';
+  const maxButtons = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  
+  if (endPage - startPage + 1 < maxButtons) {
+    startPage = Math.max(1, endPage - maxButtons + 1);
+  }
+  
+  if (startPage > 1) {
+    html += `<button class="page-btn" onclick="window._pageCallback(1)">1</button>`;
+    if (startPage > 2) html += `<span style="padding: 8px;">...</span>`;
+  }
+  
+  for (let i = startPage; i <= endPage; i++) {
+    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="window._pageCallback(${i})">${i}</button>`;
+  }
+  
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) html += `<span style="padding: 8px;">...</span>`;
+    html += `<button class="page-btn" onclick="window._pageCallback(${totalPages})">${totalPages}</button>`;
+  }
+  
+  container.innerHTML = html;
+  window._pageCallback = onPageChange;
+}
+
+function openEditInputModal(item) {
+  currentEditInput = item;
+  document.getElementById('editInputBarcode').value = item.barcode || '';
+  document.getElementById('editInputSKU').value = item.sku || '';
+  document.getElementById('editInputDesc').value = item.description || '';
+  document.getElementById('editInputExp').value = item.expiredDate || '';
+  document.getElementById('editInputLokasi').value = item.lokasi || '';
+  document.getElementById('modalEditInput').classList.add('open');
+}
+
+async function saveEditInput() {
+  if (!currentEditInput) return;
+  const data = {
+    rowIndex: currentEditInput.rowIndex,
+    barcode: document.getElementById('editInputBarcode').value.trim(),
+    sku: document.getElementById('editInputSKU').value.trim(),
+    description: document.getElementById('editInputDesc').value.trim(),
+    expiredDate: document.getElementById('editInputExp').value,
+    lokasi: document.getElementById('editInputLokasi').value.trim()
+  };
+  if (!data.barcode || !data.description || !data.expiredDate || !data.lokasi) {
+    return showToast("Semua field wajib diisi!", "error");
+  }
+  try {
+    await callApi({ action: "updateInput" }, data);
+    const idx = inputsData.findIndex(x => x.rowIndex == currentEditInput.rowIndex);
+    if (idx !== -1) inputsData[idx] = { ...inputsData[idx], ...data };
+    showToast("✅ Data berhasil diupdate", "success");
+    closeModal('modalEditInput');
+    updateStats();
+    renderInputs();
+  } catch(e) { showToast("❌ Gagal update: " + e.message, "error"); }
+}
+
+async function deleteInput(rowIndex) {
+  if (!confirm("Yakin ingin menghapus data input ini?\n\nData yang dihapus tidak bisa dikembalikan!")) return;
+  try {
+    await callApi({ action: "deleteInput" }, { rowIndex: rowIndex });
+    inputsData = inputsData.filter(x => x.rowIndex != rowIndex);
+    showToast("✅ Data berhasil dihapus", "success");
+    updateStats();
+    renderInputs();
+  } catch(e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+}
+
+function openEditDatabaseModal(item) {
+  currentEditDb = item;
+  document.getElementById('editDbOldBarcode').value = item.barcode;
+  document.getElementById('editDbSKU').value = item.sku || '';
+  document.getElementById('editDbBarcode').value = item.barcode || '';
+  document.getElementById('editDbDesc').value = item.description || '';
+  document.getElementById('editDbTarik').value = item.hMinus || 0;
+  document.getElementById('modalEditDatabase').classList.add('open');
+}
+
+async function saveEditDatabase() {
+  if (!currentEditDb) return;
+  const data = {
+    oldBarcode: document.getElementById('editDbOldBarcode').value,
+    sku: document.getElementById('editDbSKU').value.trim(),
+    barcode: document.getElementById('editDbBarcode').value.trim(),
+    description: document.getElementById('editDbDesc').value.trim(),
+    hMinus: parseInt(document.getElementById('editDbTarik').value) || 0
+  };
+  if (!data.sku || !data.barcode || !data.description) {
+    return showToast("Semua field wajib diisi!", "error");
+  }
+  try {
+    await callApi({ action: "updateDatabase" }, data);
+    const idx = databaseData.findIndex(i => i.barcode == data.oldBarcode);
+    if (idx !== -1) {
+      databaseData[idx] = { 
+        ...databaseData[idx], 
+        sku: data.sku,
+        barcode: data.barcode, 
+        description: data.description, 
+        hMinus: data.hMinus 
+      };
+    }
+    showToast("✅ Database berhasil diupdate", "success");
+    closeModal('modalEditDatabase');
+    renderDatabase();
+  } catch(e) { showToast("❌ Gagal update: " + e.message, "error"); }
+}
+
+async function deleteDatabase(barcode) {
+  if (!confirm("Yakin ingin menghapus data database ini?\n\nSemua input yang terkait dengan barcode ini akan tetap ada!")) return;
+  try {
+    await callApi({ action: "deleteDatabase" }, { barcode: barcode });
+    databaseData = databaseData.filter(i => i.barcode != barcode);
+    showToast("✅ Database berhasil dihapus", "success");
+    renderDatabase();
+  } catch(e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+}
+
+function openAddDatabaseModal() {
+  document.getElementById('addDbSKU').value = '';
+  document.getElementById('addDbBarcode').value = '';
+  document.getElementById('addDbDesc').value = '';
+  document.getElementById('addDbTarik').value = '0';
+  document.getElementById('modalAddDatabase').classList.add('open');
+}
+
+async function saveAddDatabase() {
+  const sku = document.getElementById('addDbSKU').value.trim();
+  const barcode = document.getElementById('addDbBarcode').value.trim();
+  const description = document.getElementById('addDbDesc').value.trim();
+  const hMinus = parseInt(document.getElementById('addDbTarik').value) || 0;
+  
+  if (!sku || !barcode || !description) {
+    return showToast("Semua field wajib diisi!", "error");
+  }
+  
+  if (databaseData.some(item => item.barcode === barcode)) {
+    return showToast("⚠️ Barcode sudah ada di database!", "error");
+  }
+  
+  try {
+    await callApi({ action: "addDatabase" }, { sku, barcode, description, hMinus });
+    databaseData.push({ sku, barcode, description, hMinus });
+    showToast("✅ Database berhasil ditambahkan", "success");
+    closeModal('modalAddDatabase');
+    renderDatabase();
+  } catch(e) { showToast("❌ Gagal tambah: " + e.message, "error"); }
+}
+
+function switchTab(tab) {
+  const tabInputs = document.getElementById('tabInputs');
+  const tabDatabase = document.getElementById('tabDatabase');
+  const btns = document.querySelectorAll('.tab-btn');
+  
+  btns.forEach((btn, i) => {
+    if ((tab === 'inputs' && i === 0) || (tab === 'database' && i === 1)) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  
+  if (tab === 'inputs') {
+    tabInputs.style.display = 'block';
+    tabDatabase.style.display = 'none';
+    inputsPage = 1;
+    renderInputs();
+  } else {
+    tabInputs.style.display = 'none';
+    tabDatabase.style.display = 'block';
+    databasePage = 1;
+    renderDatabase();
+  }
+}
+
+function closeModal(modalId) { 
+  document.getElementById(modalId).classList.remove('open'); 
+}
+
+// LOGIN FUNCTIONS
+function openLoginModal() { document.getElementById('loginModal').classList.add('open'); }
+function closeLoginModal() { document.getElementById('loginModal').classList.remove('open'); }
+
+function doLogin() {
+  const pass = document.getElementById('loginPassword').value;
+  if (pass !== ADMIN_PASSWORD) {
+    showToast("❌ Password salah!", "error");
+    return;
+  }
+  isLoggedIn = true;
+  closeLoginModal();
+  document.getElementById('loginPassword').value = '';
+  loadAllData();
+  showToast("✅ Login berhasil! Selamat datang di Admin Panel", "success");
+}
+
+// TAMPILKAN LOGIN SAAT PERTAMA BUKA
+window.onload = () => {
+  openLoginModal();
+  console.log("🔮 Admin Panel - Magenta Aeon");
+  console.log("📊 Spreadsheet ID:", SPREADSHEET_ID);
+  console.log("🔗 API URL:", APPS_SCRIPT_URL);
+};
+
+// TUTUP MODAL JIKA KLIK DI LUAR
+document.querySelectorAll('.modal-overlay').forEach(modal => {
+  modal.addEventListener('click', (e) => { 
+    if (e.target === modal) modal.classList.remove('open'); 
+  });
+});
+</script>
+</body>
+</html>
