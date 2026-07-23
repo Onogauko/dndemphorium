@@ -8,12 +8,14 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
-<!-- PWA Manifest & Theme -->
-<link rel="manifest" href="manifest.json">
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#c026d3">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Expired Control">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Expired Ctrl">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/icon-192.png">
 
 <style>
 :root {
@@ -37,76 +39,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .header-date { color: rgba(255,255,255,0.55); font-size: 12px; margin-top: 2px; }
 .sync-btn { background: rgba(255,255,255,0.15); border: none; color: white; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: background 0.2s; }
 .sync-btn:active { background: rgba(255,255,255,0.25); }
-
-/* ADMIN CONTACTS */
-.admin-contacts {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.admin-avatar {
-  position: relative;
-}
-
-.admin-avatar img {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(255,255,255,.4);
-  cursor: pointer;
-}
-
-.admin-avatar .avatar-placeholder {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  color: var(--magenta);
-  font-size: 14px;
-  border: 2px solid rgba(255,255,255,.4);
-  cursor: pointer;
-}
-
-.contact-popup {
-  display: none;
-  position: absolute;
-  top: 50px;
-  left: 0;
-  background: white;
-  border-radius: 12px;
-  padding: 10px;
-  min-width: 150px;
-  z-index: 9999;
-  box-shadow: 0 8px 24px rgba(0,0,0,.15);
-}
-
-.contact-popup.show {
-  display: block;
-}
-
-.contact-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #111;
-  margin-bottom: 8px;
-}
-
-.contact-popup button {
-  width: 100%;
-  border: none;
-  background: #25D366;
-  color: white;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-  font-weight: 600;
-}
 
 /* TABS */
 .tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 12px 12px 0 0; padding: 5px 5px 0; margin-top: 10px; }
@@ -395,24 +327,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
     
     <div style="display:flex;gap:8px;align-items:center;">
-      <div class="admin-contacts">
-        <div class="admin-avatar" onclick="toggleContact('pic1')">
-          <img src="foto1.jpeg" alt="Admin 1" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-          <div class="avatar-placeholder" style="display:none;">JK</div>
-          <div class="contact-popup" id="pic1">
-            <div class="contact-name">👤 Joni Kuswanto</div>
-            <button onclick="openWA('628979778571')">📞 Hubungi</button>
-          </div>
-        </div>
-        <div class="admin-avatar" onclick="toggleContact('pic2')">
-          <img src="foto2.jpeg" alt="Admin 2" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-          <div class="avatar-placeholder" style="display:none;">AS</div>
-          <div class="contact-popup" id="pic2">
-            <div class="contact-name">👤 Akbar Setyawan</div>
-            <button onclick="openWA('628987596408')">📞 Hubungi</button>
-          </div>
-        </div>
-      </div>
       <button class="sync-btn" onclick="window.location.href='admin.html'">⚙️ Admin Panel</button>
       <button class="sync-btn" onclick="loadAll()" id="syncBtn">↻ Sync</button>
     </div>
@@ -642,7 +556,7 @@ function saveOfflineQueue() {
   localStorage.setItem('offline_queue_magenta_v3', JSON.stringify(offlineQueue)); 
 }
 
-// ========== FUNGSI API (POST METHOD UNTUK HINDARI CORS) ==========
+// ========== FUNGSI API (POST METHOD) ==========
 async function callApi(params, body = null) {
   if (!isOnline) {
     if (body && params.action === "addInput") {
@@ -665,25 +579,16 @@ async function callApi(params, body = null) {
       });
     }
     
-    console.log("POST:", APPS_SCRIPT_URL, formData.toString());
-    
     const res = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString()
     });
     
-    if (!res.ok) {
-      throw new Error(`HTTP Error: ${res.status}`);
-    }
-    
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
     const json = await res.json();
-    
     if (json.error) throw new Error(json.error);
     return json;
-    
   } catch(e) {
     console.error("API Error:", e);
     throw new Error("Gagal terhubung: " + e.message);
@@ -860,13 +765,7 @@ async function submitInput() {
   const btn = document.getElementById('submitBtn');
   btn.disabled = true; btn.innerText = "Menyimpan...";
   try {
-    const payload = { 
-      barcode: b, 
-      sku: sku,
-      description: d, 
-      expiredDate: e, 
-      lokasi: l
-    };
+    const payload = { barcode: b, sku: sku, description: d, expiredDate: e, lokasi: l };
     const res = await callApi({ action: "addInput" }, payload);
     if (res.offline) {
       inItems.push({ rowIndex: res.rowIndex, barcode: b, sku: sku, description: d, expiredDate: e, lokasi: l, timestamp: getTodayStr(), offline: true });
@@ -1129,6 +1028,15 @@ function toggleContact(id) {
 function openWA(number) { window.open('https://wa.me/' + number, '_blank'); }
 function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    console.log('SW registered');
+  }).catch(err => {
+    console.log('SW failed');
+  });
+}
+
 window.onload = () => {
   document.getElementById('headerDate').innerText = formatDateIndo(getTodayStr());
   document.getElementById('pullDateFilter').value = getTodayStr();
@@ -1140,8 +1048,6 @@ window.onload = () => {
   resetInactivityTimer();
   
   console.log("🔮 Expired Control D&D - Magenta Aeon");
-  console.log("📊 Spreadsheet ID:", SPREADSHEET_ID);
-  console.log("🔗 API URL:", APPS_SCRIPT_URL);
 };
 </script>
 </body>
