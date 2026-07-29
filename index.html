@@ -368,7 +368,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
       <input class="inp" id="fDesc" placeholder="Nama Barang (otomatis terisi)" readonly style="background: #f5f3ff;">
       <input class="inp" id="fExp" type="date">
       <div class="lokasi-chips" id="lokasiChips"></div>
-      <input class="inp" id="fLokasi" placeholder="Lokasi (Rak/Area)" oninput="updateLokasiChips()">
+      <select class="inp" id="fLokasi" onchange="updateLokasiChips()">
+        <option value="">-- Pilih Lokasi --</option>
+        <option value="Selling">Selling</option>
+        <option value="Backroom">Backroom</option>
+      </select>
       <button class="btn-primary" onclick="submitInput()" id="submitBtn" disabled>💾 Simpan Ke Spreadsheet</button>
     </div>
 
@@ -879,8 +883,11 @@ function buildLokasiHistory() {
 
 function renderLokasiChips(val) {
   const container = document.getElementById('lokasiChips');
-  const s = lokasiFrecuentes.filter(l => !val || l.toLowerCase().includes(val.toLowerCase()));
-  container.innerHTML = s.map(l => `<button class="lokasi-chip" onclick="pickLokasi('${l.replace(/'/g, "\\'")}')">${escHtml(l)}</button>`).join('');
+  const selected = val || document.getElementById('fLokasi').value;
+  const defaultOptions = ['Selling', 'Backroom'];
+  const allOptions = [...new Set([...defaultOptions, ...lokasiFrecuentes])];
+  const filtered = allOptions.filter(l => !selected || l.toLowerCase().includes(selected.toLowerCase()));
+  container.innerHTML = filtered.map(l => `<button class="lokasi-chip" onclick="pickLokasi('${l.replace(/'/g, "\\'")}')">${escHtml(l)}</button>`).join('');
 }
 
 function updateLokasiChips() { renderLokasiChips(document.getElementById('fLokasi').value); }
