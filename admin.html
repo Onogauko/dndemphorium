@@ -138,10 +138,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
     <div class="modal-field">
       <label>Lokasi</label>
-      <select id="editInputLokasi" style="width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; font-size: 14px; outline: none; font-family: 'DM Sans', sans-serif;">
-        <option value="Selling">Selling</option>
-        <option value="Backroom">Backroom</option>
-      </select>
+      <input type="text" id="editInputLokasi">
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modalEditInput')">Batal</button>
@@ -451,7 +448,7 @@ function openEditInputModal(item) {
   document.getElementById('editInputSKU').value = item.sku || '';
   document.getElementById('editInputDesc').value = item.description || '';
   document.getElementById('editInputExp').value = item.expiredDate || '';
-  document.getElementById('editInputLokasi').value = item.lokasi || 'Selling';
+  document.getElementById('editInputLokasi').value = item.lokasi || '';
   document.getElementById('modalEditInput').classList.add('open');
 }
 
