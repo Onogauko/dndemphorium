@@ -240,70 +240,170 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 </div>
 
 <script>
-// KONFIGURASI
+"use strict";
+
+/*
+ * ADMIN PANEL - Frontend v4
+ *
+ * Perbaikan:
+ * - Barcode selalu dinormalisasi saat compare.
+ * - Update Database mengirim oldBarcode + oldBarcodeNormalized.
+ * - Duplicate barcode dicek sebelum add/update.
+ * - Pagination tidak memakai global _pageCallback.
+ * - Dynamic HTML tidak menyisipkan object JSON ke onclick.
+ * - Error API ditampilkan apa adanya.
+ *
+ * PENTING:
+ * Password di frontend BUKAN security yang sebenarnya.
+ * Backend Apps Script harus tetap memvalidasi akses admin.
+ */
+
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoRnzRYCyoIj9MAyeO0jfYEOahsc7a4IWwcLK5LAMUQeCDt7t-A4r73ee7qh89gf7e/exec";
 const API_TOKEN = "MAGENTA_AEON_2024";
 const ADMIN_PASSWORD = "admin123";
-const SPREADSHEET_ID = "1djq5Vrrlr-ePGsG2TuJCxyGjoVAUp0mbz0zwZRlF3dE";
+const SPREADSHEET_ID = "1djq5Vrrlr-ePGs2TuJCxyGjoVAUp0mbz0zwZRlF3dE";
+
+const ITEMS_PER_PAGE = 20;
 
 let inputsData = [];
 let databaseData = [];
 let inputsPage = 1;
 let databasePage = 1;
-const ITEMS_PER_PAGE = 20;
 let currentEditInput = null;
 let currentEditDb = null;
 let isLoggedIn = false;
+let toastTimer = null;
 
-function showToast(msg, type = '') {
-  const t = document.getElementById('toast');
-  t.innerText = msg; t.className = 'toast show ' + type;
-  setTimeout(() => { t.className = 'toast'; }, 3000);
+function normalizeBarcode(value) {
+  if (value === null || value === undefined) return "";
+
+  let s = String(value).trim();
+
+  if (/^\d+\.0+$/.test(s)) {
+    s = s.replace(/\.0+$/, "");
+  }
+
+  return s.replace(/\D/g, "");
 }
 
-function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function normalizeText(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function escHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 function getTodayStr() {
-  const now = new Date();
-  const jakarta = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-  return `${jakarta.getFullYear()}-${String(jakarta.getMonth()+1).padStart(2,'0')}-${String(jakarta.getDate()).padStart(2,'0')}`;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+
+  const get = type => parts.find(p => p.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function parseISODate(raw) {
+  if (!raw) return null;
+
+  const s = String(raw).trim();
+
+  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) {
+    return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+  }
+
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (m) {
+    // Data operasional Indonesia diperlakukan DD/MM/YYYY.
+    return `${m[3]}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
+  }
+
+  return null;
 }
 
 function formatDateIndo(raw) {
-  if (!raw) return '-';
-  const parts = raw.split('-');
-  if (parts.length !== 3) return raw;
-  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  return `${parseInt(parts[2])} ${months[parseInt(parts[1])-1]} ${parts[0]}`;
+  if (!raw) return "-";
+
+  const iso = parseISODate(raw);
+  if (!iso) return String(raw);
+
+  const [y, m, d] = iso.split("-").map(Number);
+  const months = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+  return `${d} ${months[m - 1]} ${y}`;
 }
 
-// ========== API CALL DENGAN POST ==========
+function showToast(msg, type = "") {
+  const t = document.getElementById("toast");
+  if (!t) return;
+
+  if (toastTimer) clearTimeout(toastTimer);
+
+  t.innerText = msg;
+  t.className = `toast show ${type}`;
+
+  toastTimer = setTimeout(() => {
+    t.className = "toast";
+  }, 3500);
+}
+
+/* =========================
+   API
+========================= */
+
 async function callApi(params, body = null) {
-  try {
-    const formData = new URLSearchParams();
-    formData.append('action', params.action);
-    formData.append('token', API_TOKEN);
-    
-    if (body) {
-      Object.keys(body).forEach(key => {
-        formData.append(key, body[key]);
-      });
-    }
-    
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData.toString()
+  const formData = new URLSearchParams();
+
+  formData.append("action", params.action);
+  formData.append("token", API_TOKEN);
+
+  if (body) {
+    Object.entries(body).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        formData.append(key, String(value));
+      }
     });
-    
+  }
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+      },
+      body: formData.toString(),
+      cache: "no-store"
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
     const json = await res.json();
-    if (json.error) throw new Error(json.error);
+
+    if (json?.error) {
+      throw new Error(json.error);
+    }
+
     return json;
-  } catch(e) {
+  } catch (e) {
     console.error("API Error:", e);
-    throw e;
+    throw new Error(e.message || "Gagal terhubung ke server");
   }
 }
+
+/* =========================
+   LOAD
+========================= */
 
 async function loadAllData() {
   try {
@@ -311,324 +411,823 @@ async function loadAllData() {
       callApi({ action: "getDatabase" }),
       callApi({ action: "getInputs" })
     ]);
-    databaseData = dbRes.data || [];
-    inputsData = inRes.data || [];
-    document.getElementById('totalDatabase').innerText = databaseData.length;
+
+    databaseData = (dbRes.data || []).map(item => ({
+      ...item,
+      sku: String(item.sku ?? ""),
+      barcode: String(item.barcode ?? ""),
+      description: String(item.description ?? ""),
+      hMinus: Math.max(0, parseInt(item.hMinus, 10) || 0)
+    }));
+
+    inputsData = (inRes.data || []).map(item => ({
+      ...item,
+      barcode: String(item.barcode ?? ""),
+      sku: String(item.sku ?? ""),
+      description: String(item.description ?? ""),
+      lokasi: String(item.lokasi ?? ""),
+      expiredDate: parseISODate(item.expiredDate) || String(item.expiredDate || "")
+    }));
+
+    document.getElementById("totalDatabase").innerText =
+      databaseData.length;
+
     updateStats();
     renderInputs();
     renderDatabase();
+
     showToast("✅ Data berhasil dimuat", "success");
-  } catch(e) {
+  } catch (e) {
     showToast("❌ Gagal load data: " + e.message, "error");
   }
 }
 
 function updateStats() {
   const today = getTodayStr();
-  const todayInputs = inputsData.filter(i => (i.timestamp || "").startsWith(today)).length;
-  document.getElementById('totalInputs').innerText = inputsData.length;
-  document.getElementById('todayInputs').innerText = todayInputs;
+
+  const todayInputs = inputsData.filter(i =>
+    String(i.timestamp || "").startsWith(today)
+  ).length;
+
+  document.getElementById("totalInputs").innerText =
+    inputsData.length;
+
+  document.getElementById("todayInputs").innerText =
+    todayInputs;
 }
+
+/* =========================
+   INPUT LIST
+========================= */
 
 function renderInputs() {
-  const search = document.getElementById('searchInputs')?.value.toLowerCase() || '';
-  let filtered = [...inputsData];
+  const search = normalizeText(
+    document.getElementById("searchInputs")?.value || ""
+  );
+
+  let filtered = inputsData.slice();
+
   if (search) {
-    filtered = filtered.filter(item => 
-      (item.barcode || '').toLowerCase().includes(search) ||
-      (item.description || '').toLowerCase().includes(search) ||
-      (item.sku || '').toLowerCase().includes(search)
+    filtered = filtered.filter(item =>
+      normalizeText(item.barcode).includes(search) ||
+      normalizeText(item.description).includes(search) ||
+      normalizeText(item.sku).includes(search)
     );
   }
-  filtered.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  
+
+  filtered.sort(
+    (a, b) =>
+      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+  );
+
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  if (inputsPage > totalPages && totalPages > 0) inputsPage = totalPages;
-  if (inputsPage < 1) inputsPage = 1;
-  const start = (inputsPage - 1) * ITEMS_PER_PAGE;
-  const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-  
-  const container = document.getElementById('inputsList');
-  if (paginated.length === 0) {
-    container.innerHTML = `<div class="empty-state">📭 Tidak ada data input</div>`;
-  } else {
-    container.innerHTML = paginated.map(item => {
-      const skuTag = item.sku ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>` : '';
-      return `
-      <div class="data-item">
-        <div class="data-name">${skuTag}${escHtml(item.description || item.barcode)}</div>
-        <div class="data-barcode">📦 ${escHtml(item.barcode)}</div>
-        <div class="data-detail">📅 Exp: ${formatDateIndo(item.expiredDate)} &nbsp;|&nbsp; 📍 ${escHtml(item.lokasi || '-')}</div>
-        <div class="data-detail" style="font-size:10px;">🕐 ${item.timestamp || '-'}</div>
-        <div class="data-actions">
-          <button class="btn-edit" onclick='openEditInputModal(${JSON.stringify(item).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})'>✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteInput(${item.rowIndex})">🗑️ Hapus</button>
-        </div>
-      </div>
-    `}).join('');
+
+  if (inputsPage > totalPages && totalPages > 0) {
+    inputsPage = totalPages;
   }
-  renderPagination('inputsPagination', totalPages, inputsPage, (page) => { inputsPage = page; renderInputs(); });
+
+  if (inputsPage < 1) inputsPage = 1;
+
+  const start = (inputsPage - 1) * ITEMS_PER_PAGE;
+  const paginated = filtered.slice(
+    start,
+    start + ITEMS_PER_PAGE
+  );
+
+  const container = document.getElementById("inputsList");
+
+  if (!paginated.length) {
+    container.innerHTML =
+      `<div class="empty-state">📭 Tidak ada data input</div>`;
+  } else {
+    container.innerHTML = paginated.map((item, index) => {
+      const skuTag = item.sku
+        ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>`
+        : "";
+
+      return `
+        <div class="data-item">
+          <div class="data-name">
+            ${skuTag}${escHtml(item.description || item.barcode)}
+          </div>
+
+          <div class="data-barcode">
+            📦 ${escHtml(item.barcode)}
+          </div>
+
+          <div class="data-detail">
+            📅 Exp: ${formatDateIndo(item.expiredDate)}
+            &nbsp;|&nbsp;
+            📍 ${escHtml(item.lokasi || "-")}
+          </div>
+
+          <div class="data-detail" style="font-size:10px;">
+            🕐 ${escHtml(item.timestamp || "-")}
+          </div>
+
+          <div class="data-actions">
+            <button
+              class="btn-edit"
+              data-action="edit-input"
+              data-index="${index}"
+            >✏️ Edit</button>
+
+            <button
+              class="btn-delete"
+              data-action="delete-input"
+              data-row="${escHtml(String(item.rowIndex ?? ""))}"
+            >🗑️ Hapus</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    container.querySelectorAll('[data-action="edit-input"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        const item = paginated[Number(btn.dataset.index)];
+        openEditInputModal(item);
+      });
+    });
+
+    container.querySelectorAll('[data-action="delete-input"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        deleteInput(btn.dataset.row);
+      });
+    });
+  }
+
+  renderPagination(
+    "inputsPagination",
+    totalPages,
+    inputsPage,
+    page => {
+      inputsPage = page;
+      renderInputs();
+    }
+  );
 }
+
+/* =========================
+   DATABASE LIST
+========================= */
 
 function renderDatabase() {
-  const search = document.getElementById('searchDatabase')?.value.toLowerCase() || '';
-  let filtered = [...databaseData];
+  const search = normalizeText(
+    document.getElementById("searchDatabase")?.value || ""
+  );
+
+  let filtered = databaseData.slice();
+
   if (search) {
-    filtered = filtered.filter(item => 
-      (item.barcode || '').toLowerCase().includes(search) ||
-      (item.description || '').toLowerCase().includes(search) ||
-      (item.sku || '').toLowerCase().includes(search)
+    filtered = filtered.filter(item =>
+      normalizeText(item.barcode).includes(search) ||
+      normalizeText(item.description).includes(search) ||
+      normalizeText(item.sku).includes(search)
     );
   }
-  filtered.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
-  
+
+  filtered.sort((a, b) =>
+    normalizeText(a.description).localeCompare(
+      normalizeText(b.description)
+    )
+  );
+
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  if (databasePage > totalPages && totalPages > 0) databasePage = totalPages;
-  if (databasePage < 1) databasePage = 1;
-  const start = (databasePage - 1) * ITEMS_PER_PAGE;
-  const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-  
-  const container = document.getElementById('databaseList');
-  if (paginated.length === 0) {
-    container.innerHTML = `<div class="empty-state">🗄️ Tidak ada data database</div>`;
-  } else {
-    container.innerHTML = paginated.map(item => {
-      const skuTag = item.sku ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>` : '';
-      return `
-      <div class="data-item">
-        <div class="data-name">${skuTag}${escHtml(item.description)}</div>
-        <div class="data-barcode">🔖 ${escHtml(item.barcode)}</div>
-        <div class="data-detail">⏰ Ketentuan Tarik: <strong>H-${item.hMinus || 0}</strong></div>
-        <div class="data-actions">
-          <button class="btn-edit" onclick='openEditDatabaseModal(${JSON.stringify(item).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})'>✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteDatabase('${item.barcode.replace(/'/g, "\\'")}')">🗑️ Hapus</button>
-        </div>
-      </div>
-    `}).join('');
+
+  if (databasePage > totalPages && totalPages > 0) {
+    databasePage = totalPages;
   }
-  document.getElementById('totalDatabase').innerText = filtered.length;
-  renderPagination('databasePagination', totalPages, databasePage, (page) => { databasePage = page; renderDatabase(); });
+
+  if (databasePage < 1) databasePage = 1;
+
+  const start = (databasePage - 1) * ITEMS_PER_PAGE;
+  const paginated = filtered.slice(
+    start,
+    start + ITEMS_PER_PAGE
+  );
+
+  const container = document.getElementById("databaseList");
+
+  if (!paginated.length) {
+    container.innerHTML =
+      `<div class="empty-state">🗄️ Tidak ada data database</div>`;
+  } else {
+    container.innerHTML = paginated.map((item, index) => {
+      const skuTag = item.sku
+        ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>`
+        : "";
+
+      return `
+        <div class="data-item">
+          <div class="data-name">
+            ${skuTag}${escHtml(item.description || "-")}
+          </div>
+
+          <div class="data-barcode">
+            🔖 ${escHtml(item.barcode || "-")}
+          </div>
+
+          <div class="data-detail">
+            ⏰ Ketentuan Tarik:
+            <strong>H-${Number(item.hMinus || 0)}</strong>
+          </div>
+
+          <div class="data-actions">
+            <button
+              class="btn-edit"
+              data-action="edit-db"
+              data-index="${index}"
+            >✏️ Edit</button>
+
+            <button
+              class="btn-delete"
+              data-action="delete-db"
+              data-index="${index}"
+            >🗑️ Hapus</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    container.querySelectorAll('[data-action="edit-db"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        openEditDatabaseModal(
+          paginated[Number(btn.dataset.index)]
+        );
+      });
+    });
+
+    container.querySelectorAll('[data-action="delete-db"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        deleteDatabase(
+          paginated[Number(btn.dataset.index)].barcode
+        );
+      });
+    });
+  }
+
+  document.getElementById("totalDatabase").innerText =
+    filtered.length;
+
+  renderPagination(
+    "databasePagination",
+    totalPages,
+    databasePage,
+    page => {
+      databasePage = page;
+      renderDatabase();
+    }
+  );
 }
 
-function renderPagination(containerId, totalPages, currentPage, onPageChange) {
+/* =========================
+   PAGINATION
+========================= */
+
+function renderPagination(
+  containerId,
+  totalPages,
+  currentPage,
+  onPageChange
+) {
   const container = document.getElementById(containerId);
+
   if (!container) return;
-  if (totalPages <= 1) { container.innerHTML = ''; return; }
-  
-  let html = '';
-  const maxButtons = 5;
-  let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-  
-  if (endPage - startPage + 1 < maxButtons) {
-    startPage = Math.max(1, endPage - maxButtons + 1);
+
+  if (totalPages <= 1) {
+    container.innerHTML = "";
+    return;
   }
-  
-  if (startPage > 1) {
-    html += `<button class="page-btn" onclick="window._pageCallback(1)">1</button>`;
-    if (startPage > 2) html += `<span style="padding: 8px;">...</span>`;
+
+  let start = Math.max(1, currentPage - 2);
+  let end = Math.min(totalPages, start + 4);
+
+  if (end - start < 4) {
+    start = Math.max(1, end - 4);
   }
-  
-  for (let i = startPage; i <= endPage; i++) {
-    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="window._pageCallback(${i})">${i}</button>`;
+
+  let html = "";
+
+  if (start > 1) {
+    html += `
+      <button class="page-btn" data-page="1">1</button>
+    `;
+
+    if (start > 2) {
+      html += `<span style="padding:8px;">...</span>`;
+    }
   }
-  
-  if (endPage < totalPages) {
-    if (endPage < totalPages - 1) html += `<span style="padding: 8px;">...</span>`;
-    html += `<button class="page-btn" onclick="window._pageCallback(${totalPages})">${totalPages}</button>`;
+
+  for (let page = start; page <= end; page++) {
+    html += `
+      <button
+        class="page-btn ${page === currentPage ? "active" : ""}"
+        data-page="${page}"
+      >${page}</button>
+    `;
   }
-  
+
+  if (end < totalPages) {
+    if (end < totalPages - 1) {
+      html += `<span style="padding:8px;">...</span>`;
+    }
+
+    html += `
+      <button
+        class="page-btn"
+        data-page="${totalPages}"
+      >${totalPages}</button>
+    `;
+  }
+
   container.innerHTML = html;
-  window._pageCallback = onPageChange;
+
+  container.querySelectorAll("[data-page]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      onPageChange(Number(btn.dataset.page));
+    });
+  });
 }
+
+/* =========================
+   EDIT INPUT
+========================= */
 
 function openEditInputModal(item) {
   currentEditInput = item;
-  document.getElementById('editInputBarcode').value = item.barcode || '';
-  document.getElementById('editInputSKU').value = item.sku || '';
-  document.getElementById('editInputDesc').value = item.description || '';
-  document.getElementById('editInputExp').value = item.expiredDate || '';
-  document.getElementById('editInputLokasi').value = item.lokasi || '';
-  document.getElementById('modalEditInput').classList.add('open');
+
+  document.getElementById("editInputBarcode").value =
+    item.barcode || "";
+
+  document.getElementById("editInputSKU").value =
+    item.sku || "";
+
+  document.getElementById("editInputDesc").value =
+    item.description || "";
+
+  document.getElementById("editInputExp").value =
+    parseISODate(item.expiredDate) || "";
+
+  document.getElementById("editInputLokasi").value =
+    item.lokasi || "";
+
+  document.getElementById("modalEditInput").classList.add("open");
 }
 
 async function saveEditInput() {
   if (!currentEditInput) return;
+
   const data = {
     rowIndex: currentEditInput.rowIndex,
-    barcode: document.getElementById('editInputBarcode').value.trim(),
-    sku: document.getElementById('editInputSKU').value.trim(),
-    description: document.getElementById('editInputDesc').value.trim(),
-    expiredDate: document.getElementById('editInputExp').value,
-    lokasi: document.getElementById('editInputLokasi').value.trim()
+    barcode: document.getElementById("editInputBarcode").value.trim(),
+    sku: document.getElementById("editInputSKU").value.trim(),
+    description: document.getElementById("editInputDesc").value.trim(),
+    expiredDate: document.getElementById("editInputExp").value,
+    lokasi: document.getElementById("editInputLokasi").value.trim()
   };
-  if (!data.barcode || !data.description || !data.expiredDate || !data.lokasi) {
-    return showToast("Semua field wajib diisi!", "error");
+
+  if (
+    !data.barcode ||
+    !data.description ||
+    !data.expiredDate ||
+    !data.lokasi
+  ) {
+    showToast("Semua field wajib diisi!", "error");
+    return;
   }
+
   try {
-    await callApi({ action: "updateInput" }, data);
-    const idx = inputsData.findIndex(x => x.rowIndex == currentEditInput.rowIndex);
-    if (idx !== -1) inputsData[idx] = { ...inputsData[idx], ...data };
-    showToast("✅ Data berhasil diupdate", "success");
-    closeModal('modalEditInput');
+    await callApi(
+      { action: "updateInput" },
+      data
+    );
+
+    const idx = inputsData.findIndex(
+      x => String(x.rowIndex) === String(currentEditInput.rowIndex)
+    );
+
+    if (idx !== -1) {
+      inputsData[idx] = {
+        ...inputsData[idx],
+        ...data
+      };
+    }
+
+    closeModal("modalEditInput");
     updateStats();
     renderInputs();
-  } catch(e) { showToast("❌ Gagal update: " + e.message, "error"); }
+
+    showToast("✅ Data berhasil diupdate", "success");
+  } catch (e) {
+    showToast(
+      "❌ Gagal update: " + e.message,
+      "error"
+    );
+  }
 }
 
 async function deleteInput(rowIndex) {
-  if (!confirm("Yakin ingin menghapus data input ini?\n\nData yang dihapus tidak bisa dikembalikan!")) return;
+  if (!rowIndex) {
+    showToast("❌ Row data tidak valid", "error");
+    return;
+  }
+
+  if (!confirm(
+    "Yakin ingin menghapus data input ini?\n\n" +
+    "Data yang dihapus tidak bisa dikembalikan!"
+  )) return;
+
   try {
-    await callApi({ action: "deleteInput" }, { rowIndex: rowIndex });
-    inputsData = inputsData.filter(x => x.rowIndex != rowIndex);
-    showToast("✅ Data berhasil dihapus", "success");
+    await callApi(
+      { action: "deleteInput" },
+      { rowIndex }
+    );
+
+    inputsData = inputsData.filter(
+      x => String(x.rowIndex) !== String(rowIndex)
+    );
+
     updateStats();
     renderInputs();
-  } catch(e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+
+    showToast("✅ Data berhasil dihapus", "success");
+  } catch (e) {
+    showToast(
+      "❌ Gagal hapus: " + e.message,
+      "error"
+    );
+  }
 }
+
+/* =========================
+   EDIT DATABASE
+========================= */
 
 function openEditDatabaseModal(item) {
   currentEditDb = item;
-  document.getElementById('editDbOldBarcode').value = item.barcode;
-  document.getElementById('editDbSKU').value = item.sku || '';
-  document.getElementById('editDbBarcode').value = item.barcode || '';
-  document.getElementById('editDbDesc').value = item.description || '';
-  document.getElementById('editDbTarik').value = item.hMinus || 0;
-  document.getElementById('modalEditDatabase').classList.add('open');
+
+  document.getElementById("editDbOldBarcode").value =
+    item.barcode || "";
+
+  document.getElementById("editDbSKU").value =
+    item.sku || "";
+
+  document.getElementById("editDbBarcode").value =
+    item.barcode || "";
+
+  document.getElementById("editDbDesc").value =
+    item.description || "";
+
+  document.getElementById("editDbTarik").value =
+    Number(item.hMinus || 0);
+
+  document.getElementById("modalEditDatabase").classList.add("open");
 }
 
 async function saveEditDatabase() {
   if (!currentEditDb) return;
-  const data = {
-    oldBarcode: document.getElementById('editDbOldBarcode').value,
-    sku: document.getElementById('editDbSKU').value.trim(),
-    barcode: document.getElementById('editDbBarcode').value.trim(),
-    description: document.getElementById('editDbDesc').value.trim(),
-    hMinus: parseInt(document.getElementById('editDbTarik').value) || 0
-  };
-  if (!data.sku || !data.barcode || !data.description) {
-    return showToast("Semua field wajib diisi!", "error");
+
+  const oldBarcode = document
+    .getElementById("editDbOldBarcode")
+    .value.trim();
+
+  const newBarcode = document
+    .getElementById("editDbBarcode")
+    .value.trim();
+
+  const sku = document
+    .getElementById("editDbSKU")
+    .value.trim();
+
+  const description = document
+    .getElementById("editDbDesc")
+    .value.trim();
+
+  const hMinusRaw = document
+    .getElementById("editDbTarik")
+    .value;
+
+  const hMinus = Math.max(
+    0,
+    parseInt(hMinusRaw, 10) || 0
+  );
+
+  if (!sku || !newBarcode || !description) {
+    showToast("SKU, Barcode, dan Nama Barang wajib diisi!", "error");
+    return;
   }
+
+  const oldNormalized = normalizeBarcode(oldBarcode);
+  const newNormalized = normalizeBarcode(newBarcode);
+
+  if (!oldNormalized || !newNormalized) {
+    showToast("❌ Barcode tidak valid", "error");
+    return;
+  }
+
+  // Cek duplicate hanya terhadap item lain.
+  const duplicate = databaseData.find(item => {
+    const sameBarcode =
+      normalizeBarcode(item.barcode) === newNormalized;
+
+    const sameCurrentItem =
+      normalizeBarcode(item.barcode) === oldNormalized;
+
+    return sameBarcode && !sameCurrentItem;
+  });
+
+  if (duplicate) {
+    showToast(
+      "⚠️ Barcode baru sudah digunakan oleh produk lain!",
+      "error"
+    );
+    return;
+  }
+
+  const data = {
+    oldBarcode,
+    oldBarcodeNormalized: oldNormalized,
+    barcode: newBarcode,
+    barcodeNormalized: newNormalized,
+    sku,
+    description,
+    hMinus
+  };
+
+  const saveBtn = document.querySelector(
+    "#modalEditDatabase .btn-save"
+  );
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerText = "Menyimpan...";
+  }
+
   try {
-    await callApi({ action: "updateDatabase" }, data);
-    const idx = databaseData.findIndex(i => i.barcode == data.oldBarcode);
+    /*
+     * Penting:
+     * oldBarcodeNormalized dikirim supaya backend baru bisa mencari
+     * barcode secara konsisten meskipun Google Sheets mengembalikannya
+     * sebagai Number/String/123.0.
+     */
+    await callApi(
+      { action: "updateDatabase" },
+      data
+    );
+
+    const idx = databaseData.findIndex(item =>
+      normalizeBarcode(item.barcode) === oldNormalized
+    );
+
     if (idx !== -1) {
-      databaseData[idx] = { 
-        ...databaseData[idx], 
-        sku: data.sku,
-        barcode: data.barcode, 
-        description: data.description, 
-        hMinus: data.hMinus 
+      databaseData[idx] = {
+        ...databaseData[idx],
+        sku,
+        barcode: newBarcode,
+        description,
+        hMinus
       };
     }
-    showToast("✅ Database berhasil diupdate", "success");
-    closeModal('modalEditDatabase');
+
+    closeModal("modalEditDatabase");
     renderDatabase();
-  } catch(e) { showToast("❌ Gagal update: " + e.message, "error"); }
+
+    showToast("✅ Database berhasil diupdate", "success");
+
+    // Refresh dari server agar frontend tidak berbeda dengan Sheet.
+    await loadAllData();
+  } catch (e) {
+    showToast(
+      "❌ Gagal update: " + e.message,
+      "error"
+    );
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerText = "Simpan";
+    }
+  }
 }
 
 async function deleteDatabase(barcode) {
-  if (!confirm("Yakin ingin menghapus data database ini?\n\nSemua input yang terkait dengan barcode ini akan tetap ada!")) return;
+  const normalized = normalizeBarcode(barcode);
+
+  if (!normalized) {
+    showToast("❌ Barcode tidak valid", "error");
+    return;
+  }
+
+  if (!confirm(
+    "Yakin ingin menghapus data database ini?\n\n" +
+    "Semua input yang terkait dengan barcode ini akan tetap ada!"
+  )) return;
+
   try {
-    await callApi({ action: "deleteDatabase" }, { barcode: barcode });
-    databaseData = databaseData.filter(i => i.barcode != barcode);
-    showToast("✅ Database berhasil dihapus", "success");
+    await callApi(
+      { action: "deleteDatabase" },
+      {
+        barcode,
+        barcodeNormalized: normalized
+      }
+    );
+
+    databaseData = databaseData.filter(
+      item => normalizeBarcode(item.barcode) !== normalized
+    );
+
     renderDatabase();
-  } catch(e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+
+    showToast(
+      "✅ Database berhasil dihapus",
+      "success"
+    );
+  } catch (e) {
+    showToast(
+      "❌ Gagal hapus: " + e.message,
+      "error"
+    );
+  }
 }
 
+/* =========================
+   ADD DATABASE
+========================= */
+
 function openAddDatabaseModal() {
-  document.getElementById('addDbSKU').value = '';
-  document.getElementById('addDbBarcode').value = '';
-  document.getElementById('addDbDesc').value = '';
-  document.getElementById('addDbTarik').value = '0';
-  document.getElementById('modalAddDatabase').classList.add('open');
+  document.getElementById("addDbSKU").value = "";
+  document.getElementById("addDbBarcode").value = "";
+  document.getElementById("addDbDesc").value = "";
+  document.getElementById("addDbTarik").value = "0";
+
+  document.getElementById("modalAddDatabase").classList.add("open");
 }
 
 async function saveAddDatabase() {
-  const sku = document.getElementById('addDbSKU').value.trim();
-  const barcode = document.getElementById('addDbBarcode').value.trim();
-  const description = document.getElementById('addDbDesc').value.trim();
-  const hMinus = parseInt(document.getElementById('addDbTarik').value) || 0;
-  
+  const sku = document.getElementById("addDbSKU").value.trim();
+  const barcode = document.getElementById("addDbBarcode").value.trim();
+  const description = document.getElementById("addDbDesc").value.trim();
+  const hMinus = Math.max(
+    0,
+    parseInt(document.getElementById("addDbTarik").value, 10) || 0
+  );
+
   if (!sku || !barcode || !description) {
-    return showToast("Semua field wajib diisi!", "error");
+    showToast("Semua field wajib diisi!", "error");
+    return;
   }
-  
-  if (databaseData.some(item => item.barcode === barcode)) {
-    return showToast("⚠️ Barcode sudah ada di database!", "error");
+
+  const normalized = normalizeBarcode(barcode);
+
+  if (!normalized) {
+    showToast("❌ Barcode tidak valid", "error");
+    return;
   }
-  
+
+  if (databaseData.some(item =>
+    normalizeBarcode(item.barcode) === normalized
+  )) {
+    showToast(
+      "⚠️ Barcode sudah ada di database!",
+      "error"
+    );
+    return;
+  }
+
+  const btn = document.querySelector(
+    "#modalAddDatabase .btn-save"
+  );
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "Menambah...";
+  }
+
   try {
-    await callApi({ action: "addDatabase" }, { sku, barcode, description, hMinus });
-    databaseData.push({ sku, barcode, description, hMinus });
-    showToast("✅ Database berhasil ditambahkan", "success");
-    closeModal('modalAddDatabase');
+    await callApi(
+      { action: "addDatabase" },
+      {
+        sku,
+        barcode,
+        barcodeNormalized: normalized,
+        description,
+        hMinus
+      }
+    );
+
+    databaseData.push({
+      sku,
+      barcode,
+      description,
+      hMinus
+    });
+
+    closeModal("modalAddDatabase");
     renderDatabase();
-  } catch(e) { showToast("❌ Gagal tambah: " + e.message, "error"); }
+
+    showToast(
+      "✅ Database berhasil ditambahkan",
+      "success"
+    );
+
+    await loadAllData();
+  } catch (e) {
+    showToast(
+      "❌ Gagal tambah: " + e.message,
+      "error"
+    );
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "Tambah";
+    }
+  }
 }
 
+/* =========================
+   TABS / MODALS / LOGIN
+========================= */
+
 function switchTab(tab) {
-  const tabInputs = document.getElementById('tabInputs');
-  const tabDatabase = document.getElementById('tabDatabase');
-  const btns = document.querySelectorAll('.tab-btn');
-  
-  btns.forEach((btn, i) => {
-    if ((tab === 'inputs' && i === 0) || (tab === 'database' && i === 1)) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
+  const tabInputs = document.getElementById("tabInputs");
+  const tabDatabase = document.getElementById("tabDatabase");
+  const btns = document.querySelectorAll(".tabs .tab-btn");
+
+  btns.forEach((btn, index) => {
+    const active =
+      (tab === "inputs" && index === 0) ||
+      (tab === "database" && index === 1);
+
+    btn.classList.toggle("active", active);
   });
-  
-  if (tab === 'inputs') {
-    tabInputs.style.display = 'block';
-    tabDatabase.style.display = 'none';
+
+  if (tab === "inputs") {
+    tabInputs.style.display = "block";
+    tabDatabase.style.display = "none";
     inputsPage = 1;
     renderInputs();
   } else {
-    tabInputs.style.display = 'none';
-    tabDatabase.style.display = 'block';
+    tabInputs.style.display = "none";
+    tabDatabase.style.display = "block";
     databasePage = 1;
     renderDatabase();
   }
 }
 
-function closeModal(modalId) { 
-  document.getElementById(modalId).classList.remove('open'); 
+function closeModal(modalId) {
+  document.getElementById(modalId)?.classList.remove("open");
 }
 
-// LOGIN FUNCTIONS
-function openLoginModal() { document.getElementById('loginModal').classList.add('open'); }
-function closeLoginModal() { document.getElementById('loginModal').classList.remove('open'); }
+function openLoginModal() {
+  document.getElementById("loginModal").classList.add("open");
+}
+
+function closeLoginModal() {
+  document.getElementById("loginModal").classList.remove("open");
+}
 
 function doLogin() {
-  const pass = document.getElementById('loginPassword').value;
+  const pass =
+    document.getElementById("loginPassword").value;
+
   if (pass !== ADMIN_PASSWORD) {
     showToast("❌ Password salah!", "error");
     return;
   }
+
   isLoggedIn = true;
   closeLoginModal();
-  document.getElementById('loginPassword').value = '';
+
+  document.getElementById("loginPassword").value = "";
+
   loadAllData();
-  showToast("✅ Login berhasil! Selamat datang di Admin Panel", "success");
+
+  showToast(
+    "✅ Login berhasil! Selamat datang di Admin Panel",
+    "success"
+  );
 }
 
-// TAMPILKAN LOGIN SAAT PERTAMA BUKA
-window.onload = () => {
-  openLoginModal();
-  console.log("🔮 Admin Panel - Magenta Aeon");
-  console.log("📊 Spreadsheet ID:", SPREADSHEET_ID);
-  console.log("🔗 API URL:", APPS_SCRIPT_URL);
-};
+/* =========================
+   INIT
+========================= */
 
-// TUTUP MODAL JIKA KLIK DI LUAR
-document.querySelectorAll('.modal-overlay').forEach(modal => {
-  modal.addEventListener('click', (e) => { 
-    if (e.target === modal) modal.classList.remove('open'); 
-  });
+window.addEventListener("load", () => {
+  openLoginModal();
+
+  document
+    .querySelectorAll(".modal-overlay")
+    .forEach(modal => {
+      modal.addEventListener("click", event => {
+        if (event.target === modal) {
+          modal.classList.remove("open");
+        }
+      });
+    });
+
+  console.log("🔮 Admin Panel - Frontend v4");
+  console.log("📊 Spreadsheet ID:", SPREADSHEET_ID);
 });
 </script>
+
 </body>
 </html>
