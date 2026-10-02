@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Admin Panel - Expired Control D&D</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
 :root {
   --magenta: #c026d3;
@@ -31,6 +31,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .header-title { color: #fff; font-size: 20px; font-weight: 600; }
 .header-sub { color: rgba(255,255,255,0.55); font-size: 12px; margin-top: 2px; }
 .back-btn { background: rgba(255,255,255,0.15); border: none; color: white; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.back-btn:disabled { opacity: 0.5; }
 .back-btn:hover { background: rgba(255,255,255,0.25); }
 
 .main { padding: 16px; }
@@ -69,6 +70,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
 .btn-cancel { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
 .btn-save { flex: 1; background: var(--magenta); border: none; border-radius: 10px; padding: 12px; font-weight: 600; color: white; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-save:disabled, .btn-cancel:disabled { opacity: 0.55; }
 .btn-save:active { background: var(--magenta-mid); }
 
 .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
@@ -142,7 +144,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modalEditInput')">Batal</button>
-      <button class="btn-save" onclick="saveEditInput()">Simpan</button>
+      <button class="btn-save" onclick="saveEditInput(this)">Simpan</button>
     </div>
   </div>
 </div>
@@ -170,7 +172,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modalEditDatabase')">Batal</button>
-      <button class="btn-save" onclick="saveEditDatabase()">Simpan</button>
+      <button class="btn-save" onclick="saveEditDatabase(this)">Simpan</button>
     </div>
   </div>
 </div>
@@ -197,7 +199,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modalAddDatabase')">Batal</button>
-      <button class="btn-save" onclick="saveAddDatabase()">Tambah</button>
+      <button class="btn-save" onclick="saveAddDatabase(this)">Tambah</button>
     </div>
   </div>
 </div>
@@ -208,14 +210,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
       <div class="header-title">⚙️ Admin Panel</div>
       <div class="header-sub">Manajemen Database & Data Input</div>
     </div>
-    <button class="back-btn" onclick="window.location.href='index.html'">← Kembali</button>
+    <div style="display:flex;gap:8px;">
+      <button class="back-btn" id="reloadBtn" onclick="loadAllData()">↻ Muat Ulang</button>
+      <button class="back-btn" onclick="window.location.href='index.html'">← Kembali</button>
+    </div>
   </div>
 </div>
 
 <div class="main">
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('inputs')">📋 Data Input</button>
-    <button class="tab-btn" onclick="switchTab('database')">🗄️ Database Master</button>
+    <button class="tab-btn active" id="tabBtnInputs" onclick="switchTab('inputs')">📋 Data Input</button>
+    <button class="tab-btn" id="tabBtnDatabase" onclick="switchTab('database')">🗄️ Database Master</button>
   </div>
 
   <div id="tabInputs">
@@ -223,380 +228,380 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
       <div class="stat-box"><div class="stat-number" id="totalInputs">0</div><div class="stat-label">Total Input</div></div>
       <div class="stat-box"><div class="stat-number" id="todayInputs">0</div><div class="stat-label">Input Hari Ini</div></div>
     </div>
-    <input type="text" class="search-box" id="searchInputs" placeholder="🔍 Cari barcode, SKU, atau nama barang..." oninput="renderInputs()">
+    <input type="text" class="search-box" id="searchInputs" placeholder="🔍 Cari barcode, SKU, atau nama barang...">
     <div id="inputsList"></div>
     <div id="inputsPagination" class="pagination"></div>
   </div>
 
   <div id="tabDatabase" style="display:none;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <div style="font-size: 12px; color: var(--text-2);">Total: <strong id="totalDatabase">0</strong> item</div>
+      <div style="font-size: 12px; color: var(--text-2);">Total: <strong id="totalDatabase">0</strong> item <span id="databaseResultInfo"></span></div>
       <button class="btn-add" onclick="openAddDatabaseModal()">+ Tambah Database</button>
     </div>
-    <input type="text" class="search-box" id="searchDatabase" placeholder="🔍 Cari barcode, SKU, atau nama barang..." oninput="renderDatabase()">
+    <input type="text" class="search-box" id="searchDatabase" placeholder="🔍 Cari barcode, SKU, atau nama barang...">
     <div id="databaseList"></div>
     <div id="databasePagination" class="pagination"></div>
   </div>
 </div>
 
+<script src="/common.js"></script>
 <script>
-// KONFIGURASI
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoRnzRYCyoIj9MAyeO0jfYEOahsc7a4IWwcLK5LAMUQeCDt7t-A4r73ee7qh89gf7e/exec";
-const API_TOKEN = "MAGENTA_AEON_2024";
 const ADMIN_PASSWORD = "admin123";
-const SPREADSHEET_ID = "1djq5Vrrlr-ePGsG2TuJCxyGjoVAUp0mbz0zwZRlF3dE";
+const ITEMS_PER_PAGE = 20;
 
 let inputsData = [];
 let databaseData = [];
 let inputsPage = 1;
 let databasePage = 1;
-const ITEMS_PER_PAGE = 20;
 let currentEditInput = null;
 let currentEditDb = null;
 let isLoggedIn = false;
+let isBusy = false;
+let toastTimer = null;
+
+const $ = (id) => document.getElementById(id);
 
 function showToast(msg, type = '') {
-  const t = document.getElementById('toast');
+  const t = $('toast');
+  if (toastTimer) clearTimeout(toastTimer);
   t.innerText = msg; t.className = 'toast show ' + type;
-  setTimeout(() => { t.className = 'toast'; }, 3000);
+  toastTimer = setTimeout(() => { t.className = 'toast'; toastTimer = null; }, 3000);
 }
 
-function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-function getTodayStr() {
-  const now = new Date();
-  const jakarta = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-  return `${jakarta.getFullYear()}-${String(jakarta.getMonth()+1).padStart(2,'0')}-${String(jakarta.getDate()).padStart(2,'0')}`;
-}
-
-function formatDateIndo(raw) {
-  if (!raw) return '-';
-  const parts = raw.split('-');
-  if (parts.length !== 3) return raw;
-  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  return `${parseInt(parts[2])} ${months[parseInt(parts[1])-1]} ${parts[0]}`;
-}
-
-// ========== API CALL DENGAN POST ==========
-async function callApi(params, body = null) {
-  try {
-    const formData = new URLSearchParams();
-    formData.append('action', params.action);
-    formData.append('token', API_TOKEN);
-    
-    if (body) {
-      Object.keys(body).forEach(key => {
-        formData.append(key, body[key]);
-      });
-    }
-    
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData.toString()
-    });
-    
-    const json = await res.json();
-    if (json.error) throw new Error(json.error);
-    return json;
-  } catch(e) {
-    console.error("API Error:", e);
-    throw e;
+// Jalankan aksi tulis dengan tombol dikunci supaya tidak terkirim dua kali
+async function withBusy(btn, label, fn) {
+  if (isBusy) return;
+  isBusy = true;
+  const original = btn ? btn.innerText : '';
+  if (btn) { btn.disabled = true; btn.innerText = label; }
+  try { await fn(); }
+  finally {
+    isBusy = false;
+    if (btn) { btn.disabled = false; btn.innerText = original; }
   }
 }
 
+// ========== LOAD ==========
 async function loadAllData() {
+  const btn = $('reloadBtn');
+  btn.disabled = true;
   try {
-    const [dbRes, inRes] = await Promise.all([
-      callApi({ action: "getDatabase" }),
-      callApi({ action: "getInputs" })
-    ]);
-    databaseData = dbRes.data || [];
-    inputsData = inRes.data || [];
-    document.getElementById('totalDatabase').innerText = databaseData.length;
-    updateStats();
-    renderInputs();
-    renderDatabase();
+    const [dbRes, inRes] = await Promise.all([callApi("getDatabase"), callApi("getInputs")]);
+    databaseData = (dbRes.data || []).map(normalizeDbItem);
+    inputsData = (inRes.data || []).map(normalizeInputItem);
+    renderAllData();
     showToast("✅ Data berhasil dimuat", "success");
-  } catch(e) {
+  } catch (e) {
     showToast("❌ Gagal load data: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
   }
+}
+
+// rowIndex bergeser setelah ada baris yang dihapus, jadi data input dimuat ulang dari server
+async function reloadInputs() {
+  const inRes = await callApi("getInputs");
+  inputsData = (inRes.data || []).map(normalizeInputItem);
+  renderAllData();
+}
+
+function renderAllData() {
+  updateStats();
+  renderInputs();
+  renderDatabase();
 }
 
 function updateStats() {
   const today = getTodayStr();
-  const todayInputs = inputsData.filter(i => (i.timestamp || "").startsWith(today)).length;
-  document.getElementById('totalInputs').innerText = inputsData.length;
-  document.getElementById('todayInputs').innerText = todayInputs;
+  $('totalInputs').innerText = inputsData.length;
+  $('todayInputs').innerText = inputsData.filter(i => i.timestamp.startsWith(today)).length;
+  $('totalDatabase').innerText = databaseData.length;
 }
 
+function matchSearch(item, search) {
+  return item.barcode.toLowerCase().includes(search) ||
+    item.description.toLowerCase().includes(search) ||
+    item.sku.toLowerCase().includes(search);
+}
+
+function paginate(list, page) {
+  const totalPages = Math.max(1, Math.ceil(list.length / ITEMS_PER_PAGE));
+  const current = Math.min(Math.max(1, page), totalPages);
+  const start = (current - 1) * ITEMS_PER_PAGE;
+  return { current, totalPages, items: list.slice(start, start + ITEMS_PER_PAGE) };
+}
+
+// ========== RENDER INPUT ==========
 function renderInputs() {
-  const search = document.getElementById('searchInputs')?.value.toLowerCase() || '';
-  let filtered = [...inputsData];
-  if (search) {
-    filtered = filtered.filter(item => 
-      (item.barcode || '').toLowerCase().includes(search) ||
-      (item.description || '').toLowerCase().includes(search) ||
-      (item.sku || '').toLowerCase().includes(search)
-    );
-  }
-  filtered.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  if (inputsPage > totalPages && totalPages > 0) inputsPage = totalPages;
-  if (inputsPage < 1) inputsPage = 1;
-  const start = (inputsPage - 1) * ITEMS_PER_PAGE;
-  const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-  
-  const container = document.getElementById('inputsList');
-  if (paginated.length === 0) {
+  const search = $('searchInputs').value.trim().toLowerCase();
+  const filtered = inputsData
+    .filter(item => !search || matchSearch(item, search))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.rowIndex - a.rowIndex);
+
+  const { current, totalPages, items } = paginate(filtered, inputsPage);
+  inputsPage = current;
+
+  const container = $('inputsList');
+  if (!items.length) {
     container.innerHTML = `<div class="empty-state">📭 Tidak ada data input</div>`;
   } else {
-    container.innerHTML = paginated.map(item => {
+    container.innerHTML = items.map(item => {
       const skuTag = item.sku ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>` : '';
       return `
       <div class="data-item">
         <div class="data-name">${skuTag}${escHtml(item.description || item.barcode)}</div>
         <div class="data-barcode">📦 ${escHtml(item.barcode)}</div>
-        <div class="data-detail">📅 Exp: ${formatDateIndo(item.expiredDate)} &nbsp;|&nbsp; 📍 ${escHtml(item.lokasi || '-')}</div>
-        <div class="data-detail" style="font-size:10px;">🕐 ${item.timestamp || '-'}</div>
+        <div class="data-detail">📅 Exp: ${formatDateIndo(item.expISO)} &nbsp;|&nbsp; 📍 ${escHtml(item.lokasi || '-')}</div>
+        <div class="data-detail" style="font-size:10px;">🕐 ${escHtml(item.timestamp || '-')}</div>
         <div class="data-actions">
-          <button class="btn-edit" onclick='openEditInputModal(${JSON.stringify(item).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})'>✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteInput(${item.rowIndex})">🗑️ Hapus</button>
+          <button class="btn-edit" data-action="edit" data-row="${item.rowIndex}">✏️ Edit</button>
+          <button class="btn-delete" data-action="delete" data-row="${item.rowIndex}">🗑️ Hapus</button>
         </div>
-      </div>
-    `}).join('');
+      </div>`;
+    }).join('');
   }
-  renderPagination('inputsPagination', totalPages, inputsPage, (page) => { inputsPage = page; renderInputs(); });
+  renderPagination('inputsPagination', totalPages, current);
 }
 
+// ========== RENDER DATABASE ==========
 function renderDatabase() {
-  const search = document.getElementById('searchDatabase')?.value.toLowerCase() || '';
-  let filtered = [...databaseData];
-  if (search) {
-    filtered = filtered.filter(item => 
-      (item.barcode || '').toLowerCase().includes(search) ||
-      (item.description || '').toLowerCase().includes(search) ||
-      (item.sku || '').toLowerCase().includes(search)
-    );
-  }
-  filtered.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
-  
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  if (databasePage > totalPages && totalPages > 0) databasePage = totalPages;
-  if (databasePage < 1) databasePage = 1;
-  const start = (databasePage - 1) * ITEMS_PER_PAGE;
-  const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-  
-  const container = document.getElementById('databaseList');
-  if (paginated.length === 0) {
+  const search = $('searchDatabase').value.trim().toLowerCase();
+  const filtered = databaseData
+    .filter(item => !search || matchSearch(item, search))
+    .sort((a, b) => a.description.localeCompare(b.description));
+
+  const { current, totalPages, items } = paginate(filtered, databasePage);
+  databasePage = current;
+
+  const container = $('databaseList');
+  if (!items.length) {
     container.innerHTML = `<div class="empty-state">🗄️ Tidak ada data database</div>`;
   } else {
-    container.innerHTML = paginated.map(item => {
+    container.innerHTML = items.map(item => {
       const skuTag = item.sku ? `<span class="sku-tag">SKU: ${escHtml(item.sku)}</span>` : '';
       return `
       <div class="data-item">
         <div class="data-name">${skuTag}${escHtml(item.description)}</div>
         <div class="data-barcode">🔖 ${escHtml(item.barcode)}</div>
-        <div class="data-detail">⏰ Ketentuan Tarik: <strong>H-${item.hMinus || 0}</strong></div>
+        <div class="data-detail">⏰ Ketentuan Tarik: <strong>H-${item.hMinus}</strong></div>
         <div class="data-actions">
-          <button class="btn-edit" onclick='openEditDatabaseModal(${JSON.stringify(item).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})'>✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteDatabase('${item.barcode.replace(/'/g, "\\'")}')">🗑️ Hapus</button>
+          <button class="btn-edit" data-action="edit" data-barcode="${escHtml(item.barcode)}">✏️ Edit</button>
+          <button class="btn-delete" data-action="delete" data-barcode="${escHtml(item.barcode)}">🗑️ Hapus</button>
         </div>
-      </div>
-    `}).join('');
+      </div>`;
+    }).join('');
   }
-  document.getElementById('totalDatabase').innerText = filtered.length;
-  renderPagination('databasePagination', totalPages, databasePage, (page) => { databasePage = page; renderDatabase(); });
+  $('databaseResultInfo').innerText = search ? `(${filtered.length} hasil)` : '';
+  renderPagination('databasePagination', totalPages, current);
 }
 
-function renderPagination(containerId, totalPages, currentPage, onPageChange) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
+function renderPagination(containerId, totalPages, currentPage) {
+  const container = $(containerId);
   if (totalPages <= 1) { container.innerHTML = ''; return; }
-  
-  let html = '';
+
   const maxButtons = 5;
   let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-  
-  if (endPage - startPage + 1 < maxButtons) {
-    startPage = Math.max(1, endPage - maxButtons + 1);
-  }
-  
-  if (startPage > 1) {
-    html += `<button class="page-btn" onclick="window._pageCallback(1)">1</button>`;
-    if (startPage > 2) html += `<span style="padding: 8px;">...</span>`;
-  }
-  
-  for (let i = startPage; i <= endPage; i++) {
-    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="window._pageCallback(${i})">${i}</button>`;
-  }
-  
-  if (endPage < totalPages) {
-    if (endPage < totalPages - 1) html += `<span style="padding: 8px;">...</span>`;
-    html += `<button class="page-btn" onclick="window._pageCallback(${totalPages})">${totalPages}</button>`;
-  }
-  
+  const endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  if (endPage - startPage + 1 < maxButtons) startPage = Math.max(1, endPage - maxButtons + 1);
+
+  const btn = (p) => `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`;
+  const dots = `<span style="padding: 8px;">...</span>`;
+  let html = '';
+  if (startPage > 1) html += btn(1) + (startPage > 2 ? dots : '');
+  for (let i = startPage; i <= endPage; i++) html += btn(i);
+  if (endPage < totalPages) html += (endPage < totalPages - 1 ? dots : '') + btn(totalPages);
   container.innerHTML = html;
-  window._pageCallback = onPageChange;
+}
+
+// ========== INPUT: EDIT / DELETE ==========
+function findInput(rowIndex) {
+  return inputsData.find(x => String(x.rowIndex) === String(rowIndex)) || null;
 }
 
 function openEditInputModal(item) {
   currentEditInput = item;
-  document.getElementById('editInputBarcode').value = item.barcode || '';
-  document.getElementById('editInputSKU').value = item.sku || '';
-  document.getElementById('editInputDesc').value = item.description || '';
-  document.getElementById('editInputExp').value = item.expiredDate || '';
-  document.getElementById('editInputLokasi').value = item.lokasi || '';
-  document.getElementById('modalEditInput').classList.add('open');
+  $('editInputBarcode').value = item.barcode;
+  $('editInputSKU').value = item.sku;
+  $('editInputDesc').value = item.description;
+  $('editInputExp').value = item.expISO || '';
+  $('editInputLokasi').value = item.lokasi;
+  $('modalEditInput').classList.add('open');
 }
 
-async function saveEditInput() {
+async function saveEditInput(btn) {
   if (!currentEditInput) return;
   const data = {
     rowIndex: currentEditInput.rowIndex,
-    barcode: document.getElementById('editInputBarcode').value.trim(),
-    sku: document.getElementById('editInputSKU').value.trim(),
-    description: document.getElementById('editInputDesc').value.trim(),
-    expiredDate: document.getElementById('editInputExp').value,
-    lokasi: document.getElementById('editInputLokasi').value.trim()
+    barcode: $('editInputBarcode').value.trim(),
+    sku: $('editInputSKU').value.trim(),
+    description: $('editInputDesc').value.trim(),
+    expiredDate: $('editInputExp').value,
+    lokasi: $('editInputLokasi').value.trim(),
+    // Untuk verifikasi di server bahwa baris belum bergeser
+    expectedBarcode: currentEditInput.barcode,
+    expectedTimestamp: currentEditInput.timestamp
   };
   if (!data.barcode || !data.description || !data.expiredDate || !data.lokasi) {
     return showToast("Semua field wajib diisi!", "error");
   }
-  try {
-    await callApi({ action: "updateInput" }, data);
-    const idx = inputsData.findIndex(x => x.rowIndex == currentEditInput.rowIndex);
-    if (idx !== -1) inputsData[idx] = { ...inputsData[idx], ...data };
-    showToast("✅ Data berhasil diupdate", "success");
-    closeModal('modalEditInput');
-    updateStats();
-    renderInputs();
-  } catch(e) { showToast("❌ Gagal update: " + e.message, "error"); }
+  await withBusy(btn, 'Menyimpan...', async () => {
+    try {
+      await callApi("updateInput", data);
+      const idx = inputsData.indexOf(currentEditInput);
+      const { expectedBarcode, expectedTimestamp, ...fields } = data;
+      if (idx !== -1) inputsData[idx] = normalizeInputItem({ ...currentEditInput, ...fields });
+      showToast("✅ Data berhasil diupdate", "success");
+      closeModal('modalEditInput');
+      renderAllData();
+    } catch (e) { showToast("❌ Gagal update: " + e.message, "error"); }
+  });
 }
 
-async function deleteInput(rowIndex) {
-  if (!confirm("Yakin ingin menghapus data input ini?\n\nData yang dihapus tidak bisa dikembalikan!")) return;
-  try {
-    await callApi({ action: "deleteInput" }, { rowIndex: rowIndex });
-    inputsData = inputsData.filter(x => x.rowIndex != rowIndex);
-    showToast("✅ Data berhasil dihapus", "success");
-    updateStats();
-    renderInputs();
-  } catch(e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+async function deleteInput(item) {
+  if (!confirm(`Yakin ingin menghapus data input ini?\n\n${item.description}\nExp: ${formatDateIndo(item.expISO)}\n\nData yang dihapus tidak bisa dikembalikan!`)) return;
+  await withBusy(null, '', async () => {
+    try {
+      await callApi("deleteInput", {
+        rowIndex: item.rowIndex,
+        expectedBarcode: item.barcode,
+        expectedTimestamp: item.timestamp
+      });
+      showToast("✅ Data berhasil dihapus", "success");
+    } catch (e) {
+      showToast("❌ Gagal hapus: " + e.message, "error");
+    }
+    try { await reloadInputs(); }
+    catch (e) { showToast("⚠️ Gagal memuat ulang data, tekan Muat Ulang", "error"); }
+  });
+}
+
+// ========== DATABASE: EDIT / DELETE / ADD ==========
+function findDb(barcode) {
+  return databaseData.find(x => x.barcode === barcode) || null;
 }
 
 function openEditDatabaseModal(item) {
   currentEditDb = item;
-  document.getElementById('editDbOldBarcode').value = item.barcode;
-  document.getElementById('editDbSKU').value = item.sku || '';
-  document.getElementById('editDbBarcode').value = item.barcode || '';
-  document.getElementById('editDbDesc').value = item.description || '';
-  document.getElementById('editDbTarik').value = item.hMinus || 0;
-  document.getElementById('modalEditDatabase').classList.add('open');
+  $('editDbOldBarcode').value = item.barcode;
+  $('editDbSKU').value = item.sku;
+  $('editDbBarcode').value = item.barcode;
+  $('editDbDesc').value = item.description;
+  $('editDbTarik').value = item.hMinus;
+  $('modalEditDatabase').classList.add('open');
 }
 
-async function saveEditDatabase() {
+function isBarcodeTaken(barcode, exceptItem = null) {
+  const key = barcodeKey(barcode);
+  return databaseData.some(item => item !== exceptItem && barcodeKey(item.barcode) === key);
+}
+
+async function saveEditDatabase(btn) {
   if (!currentEditDb) return;
   const data = {
-    oldBarcode: document.getElementById('editDbOldBarcode').value,
-    sku: document.getElementById('editDbSKU').value.trim(),
-    barcode: document.getElementById('editDbBarcode').value.trim(),
-    description: document.getElementById('editDbDesc').value.trim(),
-    hMinus: parseInt(document.getElementById('editDbTarik').value) || 0
+    oldBarcode: $('editDbOldBarcode').value,
+    sku: $('editDbSKU').value.trim(),
+    barcode: $('editDbBarcode').value.trim(),
+    description: $('editDbDesc').value.trim(),
+    hMinus: parseInt($('editDbTarik').value) || 0
   };
   if (!data.sku || !data.barcode || !data.description) {
     return showToast("Semua field wajib diisi!", "error");
   }
-  try {
-    await callApi({ action: "updateDatabase" }, data);
-    const idx = databaseData.findIndex(i => i.barcode == data.oldBarcode);
-    if (idx !== -1) {
-      databaseData[idx] = { 
-        ...databaseData[idx], 
-        sku: data.sku,
-        barcode: data.barcode, 
-        description: data.description, 
-        hMinus: data.hMinus 
-      };
-    }
-    showToast("✅ Database berhasil diupdate", "success");
-    closeModal('modalEditDatabase');
-    renderDatabase();
-  } catch(e) { showToast("❌ Gagal update: " + e.message, "error"); }
+  if (!/^\d+$/.test(data.barcode)) return showToast("⚠️ Barcode harus berupa angka", "error");
+  if (isBarcodeTaken(data.barcode, currentEditDb)) return showToast("⚠️ Barcode sudah dipakai item lain!", "error");
+
+  await withBusy(btn, 'Menyimpan...', async () => {
+    try {
+      await callApi("updateDatabase", data);
+      Object.assign(currentEditDb, { sku: data.sku, barcode: data.barcode, description: data.description, hMinus: data.hMinus });
+      showToast("✅ Database berhasil diupdate", "success");
+      closeModal('modalEditDatabase');
+      renderAllData();
+    } catch (e) { showToast("❌ Gagal update: " + e.message, "error"); }
+  });
 }
 
-async function deleteDatabase(barcode) {
-  if (!confirm("Yakin ingin menghapus data database ini?\n\nSemua input yang terkait dengan barcode ini akan tetap ada!")) return;
-  try {
-    await callApi({ action: "deleteDatabase" }, { barcode: barcode });
-    databaseData = databaseData.filter(i => i.barcode != barcode);
-    showToast("✅ Database berhasil dihapus", "success");
-    renderDatabase();
-  } catch(e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+async function deleteDatabase(item) {
+  if (!confirm(`Yakin ingin menghapus data database ini?\n\n${item.description}\nBarcode: ${item.barcode}\n\nSemua input yang terkait dengan barcode ini akan tetap ada!`)) return;
+  await withBusy(null, '', async () => {
+    try {
+      await callApi("deleteDatabase", { barcode: item.barcode });
+      databaseData = databaseData.filter(i => i !== item);
+      showToast("✅ Database berhasil dihapus", "success");
+      renderAllData();
+    } catch (e) { showToast("❌ Gagal hapus: " + e.message, "error"); }
+  });
 }
 
 function openAddDatabaseModal() {
-  document.getElementById('addDbSKU').value = '';
-  document.getElementById('addDbBarcode').value = '';
-  document.getElementById('addDbDesc').value = '';
-  document.getElementById('addDbTarik').value = '0';
-  document.getElementById('modalAddDatabase').classList.add('open');
+  $('addDbSKU').value = '';
+  $('addDbBarcode').value = '';
+  $('addDbDesc').value = '';
+  $('addDbTarik').value = '0';
+  $('modalAddDatabase').classList.add('open');
 }
 
-async function saveAddDatabase() {
-  const sku = document.getElementById('addDbSKU').value.trim();
-  const barcode = document.getElementById('addDbBarcode').value.trim();
-  const description = document.getElementById('addDbDesc').value.trim();
-  const hMinus = parseInt(document.getElementById('addDbTarik').value) || 0;
-  
-  if (!sku || !barcode || !description) {
-    return showToast("Semua field wajib diisi!", "error");
-  }
-  
-  if (databaseData.some(item => item.barcode === barcode)) {
-    return showToast("⚠️ Barcode sudah ada di database!", "error");
-  }
-  
-  try {
-    await callApi({ action: "addDatabase" }, { sku, barcode, description, hMinus });
-    databaseData.push({ sku, barcode, description, hMinus });
-    showToast("✅ Database berhasil ditambahkan", "success");
-    closeModal('modalAddDatabase');
-    renderDatabase();
-  } catch(e) { showToast("❌ Gagal tambah: " + e.message, "error"); }
-}
+async function saveAddDatabase(btn) {
+  const sku = $('addDbSKU').value.trim();
+  const barcode = $('addDbBarcode').value.trim();
+  const description = $('addDbDesc').value.trim();
+  const hMinus = parseInt($('addDbTarik').value) || 0;
 
-function switchTab(tab) {
-  const tabInputs = document.getElementById('tabInputs');
-  const tabDatabase = document.getElementById('tabDatabase');
-  const btns = document.querySelectorAll('.tab-btn');
-  
-  btns.forEach((btn, i) => {
-    if ((tab === 'inputs' && i === 0) || (tab === 'database' && i === 1)) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
+  if (!sku || !barcode || !description) return showToast("Semua field wajib diisi!", "error");
+  if (!/^\d+$/.test(barcode)) return showToast("⚠️ Barcode harus berupa angka", "error");
+  if (isBarcodeTaken(barcode)) return showToast("⚠️ Barcode sudah ada di database!", "error");
+
+  await withBusy(btn, 'Menambah...', async () => {
+    try {
+      await callApi("addDatabase", { sku, barcode, description, hMinus });
+      databaseData.push(normalizeDbItem({ sku, barcode, description, hMinus }));
+      showToast("✅ Database berhasil ditambahkan", "success");
+      closeModal('modalAddDatabase');
+      renderAllData();
+    } catch (e) { showToast("❌ Gagal tambah: " + e.message, "error"); }
   });
-  
-  if (tab === 'inputs') {
-    tabInputs.style.display = 'block';
-    tabDatabase.style.display = 'none';
-    inputsPage = 1;
-    renderInputs();
-  } else {
-    tabInputs.style.display = 'none';
-    tabDatabase.style.display = 'block';
-    databasePage = 1;
-    renderDatabase();
-  }
 }
 
-function closeModal(modalId) { 
-  document.getElementById(modalId).classList.remove('open'); 
+// ========== UI ==========
+function switchTab(tab) {
+  const isInputs = tab === 'inputs';
+  $('tabBtnInputs').classList.toggle('active', isInputs);
+  $('tabBtnDatabase').classList.toggle('active', !isInputs);
+  $('tabInputs').style.display = isInputs ? 'block' : 'none';
+  $('tabDatabase').style.display = isInputs ? 'none' : 'block';
 }
+
+function closeModal(modalId) {
+  $(modalId).classList.remove('open');
+}
+
+// ========== EVENT DELEGATION ==========
+$('inputsList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  const item = btn && findInput(btn.dataset.row);
+  if (!item) return;
+  if (btn.dataset.action === 'edit') openEditInputModal(item); else deleteInput(item);
+});
+
+$('databaseList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  const item = btn && findDb(btn.dataset.barcode);
+  if (!item) return;
+  if (btn.dataset.action === 'edit') openEditDatabaseModal(item); else deleteDatabase(item);
+});
+
+$('inputsPagination').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-page]');
+  if (btn) { inputsPage = Number(btn.dataset.page); renderInputs(); }
+});
+
+$('databasePagination').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-page]');
+  if (btn) { databasePage = Number(btn.dataset.page); renderDatabase(); }
+});
+
+$('searchInputs').addEventListener('input', () => { inputsPage = 1; renderInputs(); });
+$('searchDatabase').addEventListener('input', () => { databasePage = 1; renderDatabase(); });
 
 // LOGIN FUNCTIONS
 function openLoginModal() { document.getElementById('loginModal').classList.add('open'); }
@@ -619,8 +624,6 @@ function doLogin() {
 window.onload = () => {
   openLoginModal();
   console.log("🔮 Admin Panel - Magenta Aeon");
-  console.log("📊 Spreadsheet ID:", SPREADSHEET_ID);
-  console.log("🔗 API URL:", APPS_SCRIPT_URL);
 };
 
 // TUTUP MODAL JIKA KLIK DI LUAR

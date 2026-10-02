@@ -76,7 +76,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .search-sticky {
   margin-bottom: 12px;
   position: sticky;
-  top: 0;
+  top: var(--header-h, 0px);
   background: var(--surface);
   z-index: 10;
   padding: 0 0 4px 0;
@@ -201,6 +201,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   visibility: hidden;
   pointer-events: none;
 }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
 
 .not-registered {
   border: 2px solid #fca5a5 !important;
@@ -218,9 +219,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   font-weight: 700;
 }
 
-.lokasi-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-.lokasi-chip { background: var(--magenta-light); color: var(--magenta); border: none; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
-.lokasi-chip:active { transform: scale(0.95); background: var(--magenta-mid); color: white; }
+.offline-badge { background: var(--amber); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px; }
 
 .search-item { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 4px; cursor: pointer; transition: all 0.15s; }
 .search-item:active { transform: scale(0.98); background: var(--magenta-light); }
@@ -319,7 +318,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   </div>
 </div>
 
-<div class="header">
+<div class="header" id="header">
   <div class="header-top">
     <div>
       <div class="header-title">Expired Control D&D</div>
@@ -328,7 +327,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     
     <div style="display:flex;gap:8px;align-items:center;">
       <button class="sync-btn" onclick="window.location.href='admin.html'">⚙️ Admin Panel</button>
-      <button class="sync-btn" onclick="loadAll()" id="syncBtn">↻ Sync</button>
+      <button class="sync-btn" onclick="manualSync()" id="syncBtn">↻ Sync</button>
     </div>
   </div>
   <div class="tabs">
@@ -367,8 +366,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
       <input class="inp" id="fSKU" placeholder="SKU (otomatis terisi)" readonly style="background: #f5f3ff;">
       <input class="inp" id="fDesc" placeholder="Nama Barang (otomatis terisi)" readonly style="background: #f5f3ff;">
       <input class="inp" id="fExp" type="date" placeholder="Pilih Tanggal Expired">
-      <div class="lokasi-chips" id="lokasiChips" style="display:none;"></div>
-      <select class="inp" id="fLokasi" onchange="updateLokasiChips()">
+      <select class="inp" id="fLokasi">
         <option value="">-- Pilih Lokasi --</option>
         <option value="Selling">Selling</option>
         <option value="Backroom">Backroom</option>
@@ -395,309 +393,127 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   </div>
 </div>
 
+<script src="/common.js"></script>
 <script>
-// KONFIGURASI SUMBER DATA
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoRnzRYCyoIj9MAyeO0jfYEOahsc7a4IWwcLK5LAMUQeCDt7t-A4r73ee7qh89gf7e/exec";
-const API_TOKEN = "MAGENTA_AEON_2024";
-const SPREADSHEET_ID = "1djq5Vrrlr-ePGsG2TuJCxyGjoVAUp0mbz0zwZRlF3dE";
-
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-let dbItems = [];
-let inItems = [];
-let checkedRows = new Set();
-let selectedPullDate = getTodayStr();
-let html5QrScanner = null;
-let lokasiFrecuentes = [];
-let barcodeNotFoundShown = false;
-let databaseData = [];
-let toastTimer = null;
-let isOnline = navigator.onLine;
-let offlineQueue = [];
-
-// ========== FUNGSI NORMALISASI BARCODE ==========
-function normalizeBarcode(barcode) {
-  if (!barcode) return '';
-  return String(barcode).trim().replace(/[^0-9]/g, '');
-}
-
-// ========== SESSION TIMEOUT ==========
-let inactivityTimer;
+const SUBMIT_LABEL = "💾 Simpan Ke Spreadsheet";
 const INACTIVITY_DURATION = 30 * 60 * 1000;
+const MAX_SEARCH_RESULTS = 50;
+const KEY_DB = 'cache_db_magenta_v3';
+const KEY_IN = 'cache_in_magenta_v3';
+const KEY_QUEUE = 'offline_queue_magenta_v3';
+const KEY_CHECKED = 'cache_checked_magenta_v4';
 
-function resetInactivityTimer() {
-  clearTimeout(inactivityTimer);
-  inactivityTimer = setTimeout(() => {
-    const activeTab = document.querySelector('.panel.active')?.id;
-    const hasBarcode = document.getElementById('fBarcode')?.value.trim() !== '';
-    const hasDesc = document.getElementById('fDesc')?.value.trim() !== '';
-    const hasFormData = hasBarcode || hasDesc;
-    
-    if (activeTab === 'panelInput' && hasFormData) {
-      document.getElementById('fBarcode').value = '';
-      document.getElementById('fDesc').value = '';
-      document.getElementById('fSKU').value = '';
-      document.getElementById('fExp').value = '';
-      document.getElementById('fLokasi').value = '';
-      document.getElementById('searchProduct').value = '';
-      document.getElementById('searchResults').innerHTML = '';
-      document.getElementById('productInfo').innerHTML = '';
-      document.getElementById('submitBtn').disabled = true;
-      barcodeNotFoundShown = false;
-      showToast("⏰ Form direset karena tidak ada aktivitas selama 30 menit", "warning");
-    } else if (activeTab === 'panelInput') {
-      switchTab('input');
-      showToast("⏰ Kembali ke tab Input karena tidak ada aktivitas", "warning");
-    }
-  }, INACTIVITY_DURATION);
-}
+let dbItems = [];            // master database (sudah dinormalisasi)
+let productMap = new Map();  // barcodeKey -> produk
+let serverInputs = [];       // data input dari spreadsheet
+let offlineQueue = [];       // input yang belum terkirim: { body, queuedAt }
+let checkedRows = new Set(); // kunci item yang sudah dicentang di tab Tarik
+let selectedPullDate = getTodayStr();
+let selectedProduct = null;
+let lastFoundKey = null;
+let searchResultsCache = [];
+let html5QrScanner = null;
+let scannerHandled = false;
+let isOnline = navigator.onLine;
+let isSyncingQueue = false;
+let isSubmitting = false;
+let toastTimer = null;
+let inactivityTimer = null;
 
-['click', 'mousemove', 'keypress', 'scroll', 'touchstart', 'touchend', 'focus', 'input'].forEach(event => {
-  document.addEventListener(event, resetInactivityTimer);
-});
-resetInactivityTimer();
-window.addEventListener('beforeunload', () => {
-  if (inactivityTimer) clearTimeout(inactivityTimer);
-});
+const $ = (id) => document.getElementById(id);
 
-function getTodayStr() {
-  const now = new Date();
-  const jakarta = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-  const year = jakarta.getFullYear();
-  const month = String(jakarta.getMonth() + 1).padStart(2, '0');
-  const day = String(jakarta.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getExpRaw(obj) {
-  if (!obj) return null;
-  const exact = ['Expired Date', 'expiredDate', 'expired_date', 'expDate', 'exp_date', 'tanggal_expired', 'Tanggal Expired'];
-  for (let k of exact) if (obj[k]) return obj[k];
-  let possibleDate = null;
-  for (let key in obj) {
-    let k = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (k.includes('exp') || k.includes('kadal')) if (obj[key]) return obj[key];
-    if (!possibleDate && (k.includes('date') || k.includes('tgl') || k.includes('tanggal')) && !k.includes('timestamp') && !k.includes('input')) if (obj[key]) possibleDate = obj[key];
-  }
-  if (possibleDate) return possibleDate;
-  let fallbackDates = [];
-  for (let key in obj) {
-    let val = String(obj[key]).trim();
-    if (val.length < 5 || val.length > 30) continue;
-    if (/^\d+$/.test(val) && val.length > 10) continue;
-    if (/^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(val) || /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(val) || (/^\d{5}$/.test(val) && parseInt(val) > 30000)) fallbackDates.push(val);
-  }
-  return fallbackDates.length > 0 ? (fallbackDates.find(v => !v.includes(':')) || fallbackDates[0]) : null;
-}
-
-function parseToISO(raw) {
-  if (!raw) return null;
-  if (raw instanceof Date) return raw.toISOString().split('T')[0];
-  let s = String(raw).trim();
-  if (/^\d{5}$/.test(s) && parseInt(s) > 30000) {
-    let d = new Date((parseInt(s) - 25569) * 86400000);
-    return d.toISOString().split('T')[0];
-  }
-  let iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2,'0')}-${iso[3].padStart(2,'0')}`;
-  let us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (us) {
-    let a = parseInt(us[1]), b = parseInt(us[2]);
-    if (a > 12) return `${us[3]}-${String(b).padStart(2,'0')}-${String(a).padStart(2,'0')}`;
-    return `${us[3]}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`;
-  }
-  let d = new Date(s);
-  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-  return null;
-}
-
-function daysDiff(rawA, rawB) {
-  const isoA = parseToISO(rawA), isoB = parseToISO(rawB);
-  if (!isoA || !isoB) return 0;
-  const [y1,m1,d1] = isoA.split('-').map(Number), [y2,m2,d2] = isoB.split('-').map(Number);
-  return Math.round((new Date(y1,m1-1,d1) - new Date(y2,m2-1,d2)) / 86400000);
-}
-
-function isBarcodeRegistered(barcode) {
-  const normalizedBarcode = normalizeBarcode(barcode);
-  return databaseData.some(item => {
-    const normalizedDbBarcode = normalizeBarcode(item.barcode);
-    return normalizedDbBarcode === normalizedBarcode;
+// ========== DATA ==========
+function setDatabase(items) {
+  dbItems = items.map(normalizeDbItem);
+  productMap = new Map();
+  dbItems.forEach(item => {
+    const key = barcodeKey(item.barcode);
+    if (key && !productMap.has(key)) productMap.set(key, item);
   });
 }
 
-function getKetentuanTarik(hMinus) {
-  if (!hMinus || hMinus <= 0) return '';
-  if (hMinus === 1) return 'H-1';
-  return `H-${hMinus}`;
+function getProduct(barcode) {
+  const key = barcodeKey(barcode);
+  return key ? (productMap.get(key) || null) : null;
 }
 
-function getProductInfo(barcode) {
-  const normalizedBarcode = normalizeBarcode(barcode);
-  const product = databaseData.find(item => normalizeBarcode(item.barcode) === normalizedBarcode);
-  return product || null;
+// Input dari server + input offline yang belum terkirim
+function getAllInputs() {
+  const pending = offlineQueue.map(q => normalizeInputItem({
+    ...q.body,
+    timestamp: getTodayStr(new Date(q.queuedAt || q.timestamp || Date.now())),
+    offline: true
+  }));
+  return serverInputs.concat(pending);
+}
+
+function inputKey(i) {
+  return `${barcodeKey(i.barcode)}|${i.expISO || ''}|${(i.lokasi || '').toLowerCase()}|${(i.timestamp || '').slice(0, 10)}`;
+}
+
+// ========== CACHE ==========
+function readJSON(key, fallback) {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch (e) { return fallback; }
+}
+
+function writeJSON(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)); }
+  catch (e) { console.error('Gagal simpan cache:', e); }
 }
 
 function loadCache() {
-  try {
-    const dbRaw = localStorage.getItem('cache_db_magenta_v3'), 
-          inRaw = localStorage.getItem('cache_in_magenta_v3'), 
-          chkRaw = localStorage.getItem('cache_checked_magenta_v3');
-    const now = Date.now();
-    dbItems = (dbRaw && (now - parseInt(localStorage.getItem('cache_db_ts_magenta_v3') || '0')) < CACHE_TTL_MS) ? JSON.parse(dbRaw) : [];
-    inItems = (inRaw && (now - parseInt(localStorage.getItem('cache_in_ts_magenta_v3') || '0')) < CACHE_TTL_MS) ? JSON.parse(inRaw) : [];
-    checkedRows = new Set(chkRaw ? JSON.parse(chkRaw) : []);
-    const queueRaw = localStorage.getItem('offline_queue_magenta_v3');
-    if (queueRaw) offlineQueue = JSON.parse(queueRaw);
-  } catch(e) { dbItems = []; inItems = []; checkedRows = new Set(); offlineQueue = []; }
+  // Cache dipakai berapapun umurnya; akan diperbarui oleh loadAll() saat online.
+  setDatabase(readJSON(KEY_DB, []));
+  serverInputs = readJSON(KEY_IN, []).map(normalizeInputItem);
+  offlineQueue = readJSON(KEY_QUEUE, []);
+  checkedRows = new Set(readJSON(KEY_CHECKED, []));
 }
 
-function saveCache(key, data) { 
-  localStorage.setItem(key + '_magenta_v3', JSON.stringify(data)); 
-  localStorage.setItem(key + '_ts_magenta_v3', Date.now().toString()); 
-}
+function saveCheckedRows() { writeJSON(KEY_CHECKED, [...checkedRows]); }
+function saveOfflineQueue() { writeJSON(KEY_QUEUE, offlineQueue); }
 
-function saveOfflineQueue() { 
-  localStorage.setItem('offline_queue_magenta_v3', JSON.stringify(offlineQueue)); 
-}
+// ========== OFFLINE QUEUE ==========
+function isNetworkError(e) { return !(e instanceof ApiError); }
 
-// ========== FUNGSI API (POST METHOD) ==========
-async function callApi(params, body = null) {
-  if (!isOnline) {
-    if (body && params.action === "addInput") {
-      offlineQueue.push({ params, body, timestamp: Date.now() });
-      saveOfflineQueue();
-      showToast("📡 Mode Offline - Data akan disimpan saat online", "warning");
-      return { rowIndex: Date.now(), offline: true };
-    }
-    throw new Error("Tidak ada koneksi internet");
-  }
-  
-  try {
-    const formData = new URLSearchParams();
-    formData.append('action', params.action);
-    formData.append('token', API_TOKEN);
-    
-    if (body) {
-      Object.keys(body).forEach(key => {
-        formData.append(key, body[key]);
-      });
-    }
-    
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData.toString()
-    });
-    
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    const json = await res.json();
-    if (json.error) throw new Error(json.error);
-    return json;
-  } catch(e) {
-    console.error("API Error:", e);
-    throw new Error("Gagal terhubung: " + e.message);
-  }
+function queueOffline(body) {
+  offlineQueue.push({ body, queuedAt: Date.now() });
+  saveOfflineQueue();
 }
 
 async function syncOfflineQueue() {
-  if (!isOnline || offlineQueue.length === 0) return;
+  if (isSyncingQueue || !isOnline || offlineQueue.length === 0) return false;
+  isSyncingQueue = true;
   showToast(`🔄 Sinkronisasi ${offlineQueue.length} data offline...`, "info");
-  for (let i = 0; i < offlineQueue.length; i++) {
-    const item = offlineQueue[i];
-    try { await callApi(item.params, item.body); } catch(e) { console.error(e); }
+  let sent = 0, rejected = 0, networkFailed = false;
+  try {
+    while (offlineQueue.length > 0) {
+      const item = offlineQueue[0];
+      try {
+        await callApi("addInput", item.body);
+        sent++;
+      } catch (e) {
+        if (isNetworkError(e)) { networkFailed = true; break; }
+        // Ditolak server (data tidak valid): buang supaya antrian tidak macet
+        console.error('Data offline ditolak server:', item.body, e);
+        rejected++;
+      }
+      offlineQueue.shift();
+      saveOfflineQueue();
+    }
+  } finally {
+    isSyncingQueue = false;
   }
-  offlineQueue = [];
-  saveOfflineQueue();
-  await loadAll();
-  showToast("✅ Semua data offline berhasil disinkronkan", "success");
-}
-
-function updateTabBadges() {
-  const today = getTodayStr();
-  const todayInputs = inItems.filter(i => (i.timestamp || "").startsWith(today)).length;
-  const inputBadge = document.getElementById('inputBadge');
-  if (todayInputs > 0) {
-    inputBadge.innerText = todayInputs > 99 ? '99+' : todayInputs;
-    inputBadge.classList.add('show');
-  } else { inputBadge.classList.remove('show'); }
-  
-  const pullList = inItems.map(i => {
-    const db = dbItems.find(x => normalizeBarcode(x.barcode) === normalizeBarcode(i.barcode)), hMin = db ? (db.hMinus || 0) : 0;
-    const rawExp = getExpRaw(i) || i.expiredDate;
-    const isoExp = parseToISO(rawExp);
-    if (!isoExp) return false;
-    const pullDate = new Date(isoExp);
-    pullDate.setDate(pullDate.getDate() - (hMin - 1));
-    const filterDate = selectedPullDate || getTodayStr();
-    const todayDate = new Date(filterDate);
-    return pullDate.getFullYear() === todayDate.getFullYear() && pullDate.getMonth() === todayDate.getMonth() && pullDate.getDate() === todayDate.getDate();
-  }).filter(Boolean).length;
-  
-  const tarikBadge = document.getElementById('tarikBadge');
-  if (pullList > 0) {
-    tarikBadge.innerText = pullList > 99 ? '99+' : pullList;
-    tarikBadge.classList.add('show');
-  } else { tarikBadge.classList.remove('show'); }
-
-  const expiredTodayCount = inItems.filter(i => {
-    const rawExp = getExpRaw(i) || i.expiredDate;
-    const isoExp = parseToISO(rawExp);
-    if (!isoExp) return false;
-    return isoExp === today;
-  }).length;
-  
-  const expTodayBadge = document.getElementById('expTodayBadge');
-  if (expiredTodayCount > 0) {
-    expTodayBadge.innerText = expiredTodayCount > 99 ? '99+' : expiredTodayCount;
-    expTodayBadge.classList.add('show');
-  } else { expTodayBadge.classList.remove('show'); }
-}
-
-function renderExpTodayList() {
-  const container = document.getElementById('expTodayList');
-  const today = getTodayStr();
-  
-  const expiredToday = inItems.filter(i => {
-    const rawExp = getExpRaw(i) || i.expiredDate;
-    const isoExp = parseToISO(rawExp);
-    if (!isoExp) return false;
-    return isoExp === today;
-  });
-  
-  if (expiredToday.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🎉</div>Tidak ada barang yang expired hari ini</div>`;
-    return;
-  }
-  
-  container.innerHTML = expiredToday.map(i => {
-    const registered = isBarcodeRegistered(i.barcode);
-    const notRegisteredClass = !registered ? 'not-registered' : '';
-    const offlineBadge = i.offline ? '<span style="background:#d97706; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:6px;">📡 Offline</span>' : '';
-    const rawExp = getExpRaw(i) || i.expiredDate;
-    const productInfo = getProductInfo(i.barcode);
-    const skuTag = productInfo?.sku ? `<span class="sku-tag">SKU: ${escHtml(productInfo.sku)}</span>` : '';
-    
-    return `<div class="expired-card ${notRegisteredClass}">
-      <div class="pull-card-top">
-        <div style="flex:1">
-          <div class="expired-name">
-            ${skuTag}${escHtml(i.description || i.barcode)}${offlineBadge}
-            <span class="expired-badge">EXPIRED HARI INI</span>
-          </div>
-          <div class="expired-meta">
-            ${escHtml(i.barcode)} · Exp: ${formatDateIndo(rawExp)} · Lokasi: ${escHtml(i.lokasi || '-')}
-          </div>
-          ${!registered ? `<div class="not-registered-badge">⚠️ Belum Terdaftar di Database Master</div>` : ''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+  if (networkFailed) showToast(`⚠️ Koneksi terputus, ${offlineQueue.length} data masih menunggu`, "warning");
+  else if (rejected) showToast(`⚠️ ${sent} terkirim, ${rejected} ditolak server`, "error");
+  else showToast(`✅ ${sent} data offline berhasil disinkronkan`, "success");
+  return sent > 0;
 }
 
 function initOfflineDetection() {
   window.addEventListener('online', async () => {
     isOnline = true;
-    const indicator = document.getElementById('onlineIndicator');
+    const indicator = $('onlineIndicator');
     indicator.classList.add('show');
     setTimeout(() => indicator.classList.remove('show'), 3000);
     await syncOfflineQueue();
@@ -705,357 +521,407 @@ function initOfflineDetection() {
   });
   window.addEventListener('offline', () => {
     isOnline = false;
-    const indicator = document.getElementById('offlineIndicator');
+    const indicator = $('offlineIndicator');
     indicator.classList.add('show');
     setTimeout(() => indicator.classList.remove('show'), 3000);
     showToast("📡 Mode Offline - Data akan disimpan sementara", "warning");
   });
 }
 
-async function loadAll() {
+// ========== LOAD ==========
+async function loadAll({ silent = false } = {}) {
   if (!isOnline) {
-    showToast("📡 Mode Offline - Menampilkan data dari cache", "warning");
-    renderRecent(); renderPullList(); renderExpTodayList(); buildLokasiHistory(); updateTabBadges();
+    if (!silent) showToast("📡 Mode Offline - Menampilkan data dari cache", "warning");
+    renderAll();
     return;
   }
-  const syncBtn = document.getElementById('syncBtn');
+  const syncBtn = $('syncBtn');
   syncBtn.innerText = "Sync..."; syncBtn.disabled = true;
   try {
-    const [dbRes, inRes] = await Promise.all([
-      callApi({action: "getDatabase"}), 
-      callApi({action: "getInputs"})
-    ]);
-    
-    dbItems = (dbRes.data || []).map(item => ({
-      ...item,
-      sku: item.sku || '',
-      barcode: item.barcode || '',
-      description: item.description || '',
-      hMinus: parseInt(item.hMinus || 0)
-    }));
-    
-    databaseData = dbItems;
-    inItems = inRes.data || [];
-    
-    saveCache('cache_db', dbItems); 
-    saveCache('cache_in', inItems);
-    renderRecent(); renderPullList(); renderExpTodayList(); buildLokasiHistory(); updateTabBadges();
-    showToast("✅ Data berhasil disinkronkan", "success");
-  } catch(e) { 
+    const [dbRes, inRes] = await Promise.all([callApi("getDatabase"), callApi("getInputs")]);
+    setDatabase(dbRes.data || []);
+    serverInputs = (inRes.data || []).map(normalizeInputItem);
+    writeJSON(KEY_DB, dbItems);
+    writeJSON(KEY_IN, serverInputs);
+    pruneCheckedRows();
+    renderAll();
+    if (!silent) showToast("✅ Data berhasil disinkronkan", "success");
+  } catch (e) {
     console.error("Load error:", e);
-    showToast("❌ Gagal sync: " + e.message, "error"); 
+    renderAll();
+    showToast("❌ Gagal sync: " + e.message, "error");
+  } finally {
+    syncBtn.innerText = "↻ Sync"; syncBtn.disabled = false;
   }
-  syncBtn.innerText = "↻ Sync"; syncBtn.disabled = false;
 }
 
-async function submitInput() {
-  const b = document.getElementById('fBarcode').value.trim();
-  const sku = document.getElementById('fSKU').value.trim();
-  const d = document.getElementById('fDesc').value.trim();
-  const e = document.getElementById('fExp').value;
-  const l = document.getElementById('fLokasi').value.trim();
+async function manualSync() {
+  await syncOfflineQueue();
+  await loadAll();
+}
+
+// Buang centang untuk item yang sudah tidak ada di spreadsheet
+function pruneCheckedRows() {
+  const valid = new Set(serverInputs.map(inputKey));
+  let changed = false;
+  checkedRows.forEach(k => { if (!valid.has(k)) { checkedRows.delete(k); changed = true; } });
+  if (changed) saveCheckedRows();
+}
+
+// ========== PERHITUNGAN ==========
+function getPullInfo(i, today) {
+  if (!i.expISO) return null;
+  const hMin = getProduct(i.barcode)?.hMinus || 0;
+  const daysUntilExp = daysBetween(i.expISO, today) + 1;
+  const daysUntilPull = daysUntilExp - (hMin - 1);
+  const status = (daysUntilPull <= 0) ? 'red' : (daysUntilPull <= 3) ? 'amber' : 'green';
+  const pullDate = addDays(i.expISO, -(hMin - 1));
+  return { daysUntilExp, status, pullDate };
+}
+
+function computeLists(inputs) {
   const today = getTodayStr();
-
-  const duplicate = inItems.find(item => (item.timestamp || '').startsWith(today) && normalizeBarcode(item.barcode) === normalizeBarcode(b) && parseToISO(item.expiredDate) === e && (item.lokasi || '').toLowerCase() === l.toLowerCase());
-  if (duplicate) {
-    const lanjut = confirm("⚠️ Data serupa sudah pernah diinput hari ini.\n\n" + d + "\nExp: " + formatDateIndo(e) + "\nLokasi: " + l + "\n\nLanjut simpan?");
-    if (!lanjut) return;
-  }
-
-  const found = dbItems.find(x => normalizeBarcode(x.barcode) === normalizeBarcode(b));
-  if (!found) return showToast("⚠️ Barcode tidak ditemukan. Hubungi Admin.", "error");
-  if (!b || !d || !e || !l) return showToast("Semua field wajib diisi!", "error");
-
-  const btn = document.getElementById('submitBtn');
-  btn.disabled = true; btn.innerText = "Menyimpan...";
-  try {
-    const payload = { barcode: b, sku: sku, description: d, expiredDate: e, lokasi: l };
-    const res = await callApi({ action: "addInput" }, payload);
-    if (res.offline) {
-      inItems.push({ rowIndex: res.rowIndex, barcode: b, sku: sku, description: d, expiredDate: e, lokasi: l, timestamp: getTodayStr(), offline: true });
-      saveCache('cache_in', inItems);
-      showToast("📡 Disimpan offline - Akan sync otomatis", "warning");
-    } else {
-      inItems.push({ rowIndex: res.rowIndex, barcode: b, sku: sku, description: d, expiredDate: e, lokasi: l, timestamp: getTodayStr() });
-      saveCache('cache_in', inItems);
-      showToast("✅ Berhasil disimpan", "success");
-    }
-    renderRecent(); renderPullList(); renderExpTodayList(); updateTabBadges();
-    document.getElementById('fBarcode').value = ""; 
-    document.getElementById('fSKU').value = ""; 
-    document.getElementById('fDesc').value = ""; 
-    document.getElementById('fExp').value = ""; 
-    document.getElementById('fLokasi').value = ""; 
-    document.getElementById('searchProduct').value = ""; 
-    document.getElementById('searchResults').innerHTML = "";
-    document.getElementById('productInfo').innerHTML = "";
-    document.getElementById('submitBtn').disabled = true;
-    barcodeNotFoundShown = false;
-  } catch(x) { showToast("❌ Gagal simpan: " + x.message, "error"); }
-  btn.disabled = false; btn.innerText = "💾 Simpan Ke Spreadsheet";
+  const filterDate = selectedPullDate || today;
+  const recent = inputs.filter(i => i.timestamp.startsWith(today)).reverse();
+  const expToday = inputs.filter(i => i.expISO === today);
+  const pull = inputs
+    .map(i => ({ ...i, pullInfo: getPullInfo(i, today) }))
+    .filter(i => i.pullInfo && i.pullInfo.pullDate === filterDate)
+    .sort((a, b) => a.pullInfo.daysUntilExp - b.pullInfo.daysUntilExp);
+  return { recent, expToday, pull };
 }
 
-function formatDateIndo(raw) {
-  const iso = parseToISO(raw);
-  if (!iso) return '-';
-  const [y,m,d] = iso.split('-').map(Number);
-  return `${d} ${["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][m-1]} ${y}`;
+// ========== RENDER ==========
+function renderAll() {
+  const { recent, expToday, pull } = computeLists(getAllInputs());
+  renderRecent(recent);
+  renderPullList(pull);
+  renderExpTodayList(expToday);
+  setBadge('inputBadge', recent.length);
+  setBadge('tarikBadge', pull.length);
+  setBadge('expTodayBadge', expToday.length);
 }
 
-function renderRecent() {
-  const container = document.getElementById('recentList');
-  const today = getTodayStr();
-  const filtered = inItems.filter(i => (i.timestamp || "").startsWith(today)).reverse();
-  if (!filtered.length) { container.innerHTML = `<div class="empty-state">Belum ada input hari ini</div>`; return; }
-  container.innerHTML = filtered.map(i => {
-    const registered = isBarcodeRegistered(i.barcode);
-    const notRegisteredClass = !registered ? 'not-registered' : '';
-    const offlineBadge = i.offline ? '<span style="background:#d97706; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:6px;">📡 Offline</span>' : '';
-    const productInfo = getProductInfo(i.barcode);
-    const skuTag = productInfo?.sku ? `<span class="sku-tag">SKU: ${escHtml(productInfo.sku)}</span>` : '';
-    const ketentuanTarik = productInfo?.hMinus ? `<span class="ketentuan-info">${getKetentuanTarik(productInfo.hMinus)}</span>` : '';
-    
-    return `<div class="recent-item ${notRegisteredClass}">
+function setBadge(id, count) {
+  const el = $(id);
+  el.innerText = count > 99 ? '99+' : count;
+  el.classList.toggle('show', count > 0);
+}
+
+function itemTags(i, { ketentuan = true } = {}) {
+  const product = getProduct(i.barcode);
+  const skuTag = product?.sku ? `<span class="sku-tag">SKU: ${escHtml(product.sku)}</span>` : '';
+  const ket = ketentuan && product?.hMinus ? `<span class="ketentuan-info">${getKetentuanTarik(product.hMinus)}</span>` : '';
+  const offline = i.offline ? '<span class="offline-badge">📡 Offline</span>' : '';
+  return { product, skuTag, ket, offline };
+}
+
+const NOT_REGISTERED_BADGE = `<div class="not-registered-badge">⚠️ Belum Terdaftar di Database Master</div>`;
+
+function renderRecent(list) {
+  const container = $('recentList');
+  if (!list.length) { container.innerHTML = `<div class="empty-state">Belum ada input hari ini</div>`; return; }
+  container.innerHTML = list.map(i => {
+    const { product, skuTag, ket, offline } = itemTags(i);
+    return `<div class="recent-item ${product ? '' : 'not-registered'}">
       <div class="ri-info">
-        <div class="ri-name">${skuTag}${escHtml(i.description || i.barcode)}${ketentuanTarik}${offlineBadge}</div>
-        <div class="ri-meta">${escHtml(i.barcode)} · Exp: ${formatDateIndo(getExpRaw(i))} · Lokasi: ${escHtml(i.lokasi || '-')}</div>
-        ${!registered ? `<div class="not-registered-badge">⚠️ Belum Terdaftar di Database Master</div>` : ''}
+        <div class="ri-name">${skuTag}${escHtml(i.description || i.barcode)}${ket}${offline}</div>
+        <div class="ri-meta">${escHtml(i.barcode)} · Exp: ${formatDateIndo(i.expISO)} · Lokasi: ${escHtml(i.lokasi || '-')}</div>
+        ${product ? '' : NOT_REGISTERED_BADGE}
       </div>
     </div>`;
   }).join('');
-  updateTabBadges();
 }
 
-function renderPullList() {
-  const container = document.getElementById('pullList');
-  const today = getTodayStr();
-  const list = inItems.map(i => {
-    const db = dbItems.find(x => normalizeBarcode(x.barcode) === normalizeBarcode(i.barcode)), hMin = db ? (db.hMinus || 0) : 0;
-    const rawExp = getExpRaw(i) || i.expiredDate;
-    const isoExp = parseToISO(rawExp); 
-    if (!isoExp) return {...i, isTodayPull: false}; 
-    const daysUntilExp = daysDiff(isoExp, today) + 1;
-    const daysUntilPull = daysUntilExp - (hMin - 1);
-    let status = (daysUntilPull <= 0) ? 'red' : (daysUntilPull <= 3) ? 'amber' : 'green';
-    const pullDate = new Date(isoExp);
-    pullDate.setDate(pullDate.getDate() - (hMin - 1));
-    const filterDate = selectedPullDate || getTodayStr();
-    const todayDate = new Date(filterDate);
-    const isTodayPull = pullDate.getFullYear() === todayDate.getFullYear() && pullDate.getMonth() === todayDate.getMonth() && pullDate.getDate() === todayDate.getDate();
-    return { ...i, isoExp, status, daysUntilExp, isTodayPull };
-  }).sort((a, b) => (a.daysUntilExp || 9999) - (b.daysUntilExp || 9999));
-  const filtered = list.filter(i => i.isTodayPull);
-  document.getElementById('pullTotalInfo').innerText = `Total: ${filtered.length}`;
-  if (!filtered.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div>Tidak ada barang yg wajib ditarik di tanggal ini</div>`; updateTabBadges(); return; }
-  container.innerHTML = filtered.map(i => {
-    const registered = isBarcodeRegistered(i.barcode);
-    const notRegisteredClass = !registered ? 'not-registered' : '';
-    const offlineBadge = i.offline ? '<span style="background:#d97706; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:6px;">📡 Offline</span>' : '';
-    const productInfo = getProductInfo(i.barcode);
-    const skuTag = productInfo?.sku ? `<span class="sku-tag">SKU: ${escHtml(productInfo.sku)}</span>` : '';
-    const ketentuanTarik = productInfo?.hMinus ? `<span class="ketentuan-info">${getKetentuanTarik(productInfo.hMinus)}</span>` : '';
-    
-    return `<div class="pull-card ${i.status} ${checkedRows.has(i.rowIndex) ? 'done' : ''} ${notRegisteredClass}">
+function renderPullList(list) {
+  const container = $('pullList');
+  $('pullTotalInfo').innerText = `Total: ${list.length}`;
+  if (!list.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div>Tidak ada barang yg wajib ditarik di tanggal ini</div>`; return; }
+  container.innerHTML = list.map(i => {
+    const { product, skuTag, ket, offline } = itemTags(i);
+    const key = inputKey(i);
+    const checked = checkedRows.has(key);
+    return `<div class="pull-card ${i.pullInfo.status} ${checked ? 'done' : ''} ${product ? '' : 'not-registered'}">
       <div class="pull-card-top">
         <div style="flex:1">
-          <div class="pull-name">${skuTag}${escHtml(i.description || i.barcode)}${ketentuanTarik}${offlineBadge}</div>
-          <div class="pull-meta">Exp: ${formatDateIndo(i.isoExp)} (${i.daysUntilExp} hari menuju expired) · Lokasi: ${escHtml(i.lokasi || '-')}</div>
-          ${!registered ? `<div class="not-registered-badge">⚠️ Belum Terdaftar di Database Master</div>` : ''}
+          <div class="pull-name">${skuTag}${escHtml(i.description || i.barcode)}${ket}${offline}</div>
+          <div class="pull-meta">Exp: ${formatDateIndo(i.expISO)} (${i.pullInfo.daysUntilExp} hari menuju expired) · Lokasi: ${escHtml(i.lokasi || '-')}</div>
+          ${product ? '' : NOT_REGISTERED_BADGE}
         </div>
-        <div class="check-box ${checkedRows.has(i.rowIndex) ? 'checked' : ''}" onclick="toggleCheck(${i.rowIndex})">${checkedRows.has(i.rowIndex) ? '✔️' : ''}</div>
+        <div class="check-box ${checked ? 'checked' : ''}" data-key="${escHtml(key)}">${checked ? '✔️' : ''}</div>
       </div>
     </div>`;
   }).join('');
-  updateTabBadges();
 }
 
-function toggleCheck(idx) {
-  if (checkedRows.has(idx)) checkedRows.delete(idx); else checkedRows.add(idx);
-  localStorage.setItem('cache_checked_magenta_v3', JSON.stringify([...checkedRows]));
-  renderPullList();
+function renderExpTodayList(list) {
+  const container = $('expTodayList');
+  if (!list.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">🎉</div>Tidak ada barang yang expired hari ini</div>`; return; }
+  container.innerHTML = list.map(i => {
+    const { product, skuTag, offline } = itemTags(i, { ketentuan: false });
+    return `<div class="expired-card ${product ? '' : 'not-registered'}">
+      <div class="pull-card-top">
+        <div style="flex:1">
+          <div class="expired-name">
+            ${skuTag}${escHtml(i.description || i.barcode)}${offline}
+            <span class="expired-badge">EXPIRED HARI INI</span>
+          </div>
+          <div class="expired-meta">${escHtml(i.barcode)} · Exp: ${formatDateIndo(i.expISO)} · Lokasi: ${escHtml(i.lokasi || '-')}</div>
+          ${product ? '' : NOT_REGISTERED_BADGE}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function buildLokasiHistory() {
-  const freq = {}; inItems.forEach(i => { if (i.lokasi) freq[i.lokasi] = (freq[i.lokasi] || 0) + 1; });
-  lokasiFrecuentes = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0,5).map(e => e[0]);
-  renderLokasiChips('');
+function toggleCheck(key) {
+  if (checkedRows.has(key)) checkedRows.delete(key); else checkedRows.add(key);
+  saveCheckedRows();
+  renderAll();
 }
 
-function renderLokasiChips(val) {
-  const container = document.getElementById('lokasiChips');
-  const selected = val || document.getElementById('fLokasi').value;
-  const defaultOptions = ['Selling', 'Backroom'];
-  const allOptions = [...new Set([...defaultOptions, ...lokasiFrecuentes])];
-  const filtered = allOptions.filter(l => !selected || l.toLowerCase().includes(selected.toLowerCase()));
-  container.innerHTML = filtered.map(l => `<button class="lokasi-chip" onclick="pickLokasi('${l.replace(/'/g, "\\'")}')">${escHtml(l)}</button>`).join('');
+// ========== FORM INPUT ==========
+function setSelectedProduct(product) {
+  selectedProduct = product;
+  $('fSKU').value = product?.sku || '';
+  $('fDesc').value = product?.description || '';
+  if (product) {
+    const ket = getKetentuanTarik(product.hMinus);
+    $('productInfo').innerHTML = `<span class="sku-tag">SKU: ${escHtml(product.sku || '-')}</span>${ket ? `<span class="ketentuan-info">Ketentuan Tarik: ${ket}</span>` : ''}`;
+  }
+  $('submitBtn').disabled = !product;
 }
 
-function updateLokasiChips() { renderLokasiChips(document.getElementById('fLokasi').value); }
-function pickLokasi(val) { document.getElementById('fLokasi').value = val; renderLokasiChips(''); }
-
-function openScanner() {
-  document.getElementById('scannerOverlay').classList.add('open');
-  html5QrScanner = new Html5Qrcode("html5-qrcode-container");
-  html5QrScanner.start({facingMode: "environment"}, {fps: 30, qrbox: 240}, (t) => { 
-    closeScanner(); 
-    document.getElementById('fBarcode').value = t; 
-    autoFill(t); 
-    showToast("📷 Barcode terbaca", "success"); 
-  });
-}
-
-function closeScanner() { 
-  document.getElementById('scannerOverlay').classList.remove('open'); 
-  if(html5QrScanner) html5QrScanner.stop(); 
+function resetForm() {
+  ['fBarcode', 'fSKU', 'fDesc', 'fExp', 'fLokasi', 'searchProduct'].forEach(id => $(id).value = '');
+  $('searchResults').innerHTML = '';
+  $('productInfo').innerHTML = '';
+  selectedProduct = null;
+  lastFoundKey = null;
+  $('submitBtn').disabled = true;
 }
 
 function autoFill(val) {
-  const submitBtn = document.getElementById('submitBtn');
-  const productInfoDiv = document.getElementById('productInfo');
-  
-  if (!val || val.trim() === '') {
-    document.getElementById('fSKU').value = '';
-    document.getElementById('fDesc').value = '';
-    productInfoDiv.innerHTML = '';
-    submitBtn.disabled = true;
-    barcodeNotFoundShown = false;
+  const key = barcodeKey(val);
+  if (!key) {
+    setSelectedProduct(null);
+    $('productInfo').innerHTML = '';
+    lastFoundKey = null;
     return;
   }
-  
-  const searchVal = val.trim();
-  const found = dbItems.find(item => 
-    item.barcode === searchVal ||
-    item.barcode?.toLowerCase() === searchVal.toLowerCase() ||
-    item.barcode?.includes(searchVal) ||
-    searchVal.includes(item.barcode)
-  );
-  
+  const found = productMap.get(key) || null;
+  setSelectedProduct(found);
   if (found) {
-    document.getElementById('fSKU').value = found.sku || '';
-    document.getElementById('fDesc').value = found.description || '';
-    const ketentuanTarik = found.hMinus ? getKetentuanTarik(found.hMinus) : '';
-    productInfoDiv.innerHTML = `
-      <span class="sku-tag">SKU: ${escHtml(found.sku || '-')}</span>
-      ${ketentuanTarik ? `<span class="ketentuan-info">Ketentuan Tarik: ${ketentuanTarik}</span>` : ''}
-    `;
-    submitBtn.disabled = false;
-    barcodeNotFoundShown = false;
-    showToast("✓ Produk ditemukan: " + (found.description || found.barcode), "success");
+    if (lastFoundKey !== key) showToast("✓ Produk ditemukan: " + (found.description || found.barcode), "success");
+    lastFoundKey = key;
   } else {
-    document.getElementById('fSKU').value = '';
-    document.getElementById('fDesc').value = '';
-    productInfoDiv.innerHTML = '<span style="color: #dc2626;">⚠️ Barcode tidak terdaftar di database</span>';
-    submitBtn.disabled = true;
-    if (!barcodeNotFoundShown && val.trim().length >= 4) {
-      barcodeNotFoundShown = true;
-      showToast("⚠️ Barcode tidak ditemukan. Cari via search bar.", "error");
-    }
+    lastFoundKey = null;
+    $('productInfo').innerHTML = '<span style="color: var(--red);">⚠️ Barcode tidak terdaftar di database</span>';
   }
 }
 
 function searchProductList(keyword) {
-  const container = document.getElementById('searchResults');
-  if (!keyword.trim()) { container.innerHTML = ''; return; }
-  
-  const search = keyword.toLowerCase();
-  const results = dbItems.filter(item => 
-      (item.description || '').toLowerCase().includes(search) || 
-      (item.barcode || '').toLowerCase().includes(search) ||
-      (item.sku || '').toLowerCase().includes(search)
+  const container = $('searchResults');
+  const search = keyword.trim().toLowerCase();
+  if (!search) { container.innerHTML = ''; searchResultsCache = []; return; }
+
+  const results = dbItems.filter(item =>
+    item.description.toLowerCase().includes(search) ||
+    item.barcode.includes(search) ||
+    item.sku.toLowerCase().includes(search)
   );
-  
+  searchResultsCache = results.slice(0, MAX_SEARCH_RESULTS);
   container.className = "search-results";
-  if (results.length === 0) {
+  if (!results.length) {
     container.innerHTML = `<div class="search-item" style="text-align:center; color:var(--text-2);">Tidak ditemukan</div>`;
     return;
   }
-  
-  container.innerHTML = results.map(item => {
-    const ketentuanTarik = item.hMinus ? getKetentuanTarik(item.hMinus) : '';
-    return `<div class="search-item" onclick="selectProduct('${item.barcode}')">
+  const more = results.length > MAX_SEARCH_RESULTS
+    ? `<div class="search-item" style="text-align:center; color:var(--text-2);">+${results.length - MAX_SEARCH_RESULTS} lainnya, perjelas kata kunci</div>` : '';
+  container.innerHTML = searchResultsCache.map((item, idx) => {
+    const ket = getKetentuanTarik(item.hMinus);
+    return `<div class="search-item" data-idx="${idx}">
       <div class="search-item-name">
         <span class="sku-tag">SKU: ${escHtml(item.sku || '-')}</span>
         ${escHtml(item.description)}
-        ${ketentuanTarik ? `<span class="ketentuan-info">${ketentuanTarik}</span>` : ''}
+        ${ket ? `<span class="ketentuan-info">${ket}</span>` : ''}
       </div>
       <div class="search-item-barcode">Barcode: ${escHtml(item.barcode)}</div>
     </div>`;
-  }).join('');
+  }).join('') + more;
 }
 
-function selectProduct(barcode) {
-  const item = dbItems.find(x => x.barcode === barcode);
-  if (!item) return;
-  document.getElementById('fBarcode').value = item.barcode;
-  document.getElementById('fSKU').value = item.sku || '';
-  document.getElementById('fDesc').value = item.description || '';
-  document.getElementById('searchProduct').value = item.description || '';
-  document.getElementById('searchResults').innerHTML = '';
-  
-  const ketentuanTarik = item.hMinus ? getKetentuanTarik(item.hMinus) : '';
-  document.getElementById('productInfo').innerHTML = `
-    <span class="sku-tag">SKU: ${escHtml(item.sku || '-')}</span>
-    ${ketentuanTarik ? `<span class="ketentuan-info">Ketentuan Tarik: ${ketentuanTarik}</span>` : ''}
-  `;
-  document.getElementById('submitBtn').disabled = false;
-  barcodeNotFoundShown = false;
+function selectProduct(item) {
+  $('fBarcode').value = item.barcode;
+  $('searchProduct').value = item.description || '';
+  $('searchResults').innerHTML = '';
+  searchResultsCache = [];
+  lastFoundKey = barcodeKey(item.barcode);
+  setSelectedProduct(item);
 }
 
-function switchTab(t) {
-  document.querySelectorAll('.panel, .tab-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
-  document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
-  
-  if (t === 'expToday') {
-    renderExpTodayList();
+async function submitInput() {
+  if (isSubmitting) return;
+  const product = getProduct($('fBarcode').value);
+  const e = $('fExp').value;
+  const l = $('fLokasi').value.trim();
+
+  if (!product) return showToast("⚠️ Barcode tidak ditemukan. Hubungi Admin.", "error");
+  if (!e || !l) return showToast("Semua field wajib diisi!", "error");
+
+  const today = getTodayStr();
+  const duplicate = getAllInputs().find(item =>
+    item.timestamp.startsWith(today) &&
+    barcodeKey(item.barcode) === barcodeKey(product.barcode) &&
+    item.expISO === e &&
+    item.lokasi.toLowerCase() === l.toLowerCase());
+  if (duplicate && !confirm("⚠️ Data serupa sudah pernah diinput hari ini.\n\n" + product.description + "\nExp: " + formatDateIndo(e) + "\nLokasi: " + l + "\n\nLanjut simpan?")) return;
+
+  const payload = { barcode: product.barcode, sku: product.sku, description: product.description, expiredDate: e, lokasi: l };
+  const btn = $('submitBtn');
+  isSubmitting = true;
+  btn.disabled = true; btn.innerText = "Menyimpan...";
+  try {
+    if (!isOnline) {
+      queueOffline(payload);
+      showToast("📡 Disimpan offline - Akan sync otomatis", "warning");
+    } else {
+      try {
+        const res = await callApi("addInput", payload);
+        serverInputs.push(normalizeInputItem({ ...payload, rowIndex: res.rowIndex, timestamp: today }));
+        writeJSON(KEY_IN, serverInputs);
+        showToast("✅ Berhasil disimpan", "success");
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        // Koneksi bermasalah walau status online: simpan ke antrian
+        queueOffline(payload);
+        showToast("📡 Koneksi gagal - Disimpan offline", "warning");
+      }
+    }
+    resetForm();
+    renderAll();
+  } catch (x) {
+    showToast("❌ Gagal simpan: " + x.message, "error");
+  } finally {
+    isSubmitting = false;
+    btn.innerText = SUBMIT_LABEL;
+    btn.disabled = !selectedProduct;
   }
 }
 
-function changePullDate(val) { selectedPullDate = val || getTodayStr(); renderPullList(); updateTabBadges(); }
+// ========== SCANNER ==========
+function getScanFormats() {
+  if (typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+  const F = Html5QrcodeSupportedFormats;
+  return [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF];
+}
+
+async function openScanner() {
+  if (typeof Html5Qrcode === 'undefined') return showToast("❌ Library scanner gagal dimuat", "error");
+  if (html5QrScanner) return;
+  $('scannerOverlay').classList.add('open');
+  scannerHandled = false;
+  html5QrScanner = new Html5Qrcode("html5-qrcode-container", { formatsToSupport: getScanFormats(), verbose: false });
+  try {
+    await html5QrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 240 }, (text) => {
+      if (scannerHandled) return;
+      scannerHandled = true;
+      closeScanner();
+      $('fBarcode').value = text;
+      autoFill(text);
+      showToast("📷 Barcode terbaca", "success");
+    });
+  } catch (e) {
+    console.error("Scanner error:", e);
+    showToast("❌ Kamera tidak bisa dibuka. Periksa izin kamera.", "error");
+    await closeScanner();
+  }
+}
+
+async function closeScanner() {
+  $('scannerOverlay').classList.remove('open');
+  const scanner = html5QrScanner;
+  html5QrScanner = null;
+  if (!scanner) return;
+  try { if (scanner.isScanning) await scanner.stop(); } catch (e) { console.error(e); }
+  try { scanner.clear(); } catch (e) { /* abaikan */ }
+}
+
+// ========== UI ==========
+function switchTab(t) {
+  const name = t.charAt(0).toUpperCase() + t.slice(1);
+  document.querySelectorAll('.panel, .tab-btn').forEach(el => el.classList.remove('active'));
+  $('panel' + name)?.classList.add('active');
+  $('tab' + name)?.classList.add('active');
+}
+
+function changePullDate(val) { selectedPullDate = val || getTodayStr(); renderAll(); }
 
 function showToast(msg, type = '') {
-  const t = document.getElementById('toast');
-  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  const t = $('toast');
+  if (toastTimer) clearTimeout(toastTimer);
   t.innerText = msg;
-  t.style.transform = 'translateX(-50%) translateY(-100px)'; t.style.opacity = '0'; t.style.visibility = 'hidden';
-  if (type === 'success') t.style.background = '#065f46';
-  else if (type === 'error') t.style.background = '#7f1d1d';
-  else if (type === 'warning') t.style.background = '#d97706';
-  else t.style.background = '#1c1033';
+  t.style.background = { success: '#065f46', error: '#7f1d1d', warning: '#d97706' }[type] || '#1c1033';
+  t.classList.remove('show');
   void t.offsetWidth;
-  t.style.transform = 'translateX(-50%) translateY(0)'; t.style.opacity = '1'; t.style.visibility = 'visible';
-  toastTimer = setTimeout(() => { t.style.transform = 'translateX(-50%) translateY(-100px)'; t.style.opacity = '0'; t.style.visibility = 'hidden'; toastTimer = null; }, 3000);
+  t.classList.add('show');
+  toastTimer = setTimeout(() => { t.classList.remove('show'); toastTimer = null; }, 3000);
 }
 
-function toggleContact(id) {
-  document.querySelectorAll('.contact-popup').forEach(el => { if (el.id !== id) el.classList.remove('show'); });
-  document.getElementById(id).classList.toggle('show');
+function updateHeaderHeight() {
+  document.documentElement.style.setProperty('--header-h', $('header').offsetHeight + 'px');
 }
 
-function openWA(number) { window.open('https://wa.me/' + number, '_blank'); }
-function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// ========== SESSION TIMEOUT ==========
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => {
+    const activeTab = document.querySelector('.panel.active')?.id;
+    const hasFormData = $('fBarcode').value.trim() !== '' || $('fDesc').value.trim() !== '';
+    if (activeTab === 'panelInput' && hasFormData) {
+      resetForm();
+      showToast("⏰ Form direset karena tidak ada aktivitas selama 30 menit", "warning");
+    } else if (activeTab !== 'panelInput') {
+      switchTab('input');
+      showToast("⏰ Kembali ke tab Input karena tidak ada aktivitas", "warning");
+    }
+  }, INACTIVITY_DURATION);
+}
 
-// Service Worker Registration
+['click', 'keydown', 'touchstart', 'input'].forEach(evt => {
+  document.addEventListener(evt, resetInactivityTimer, { passive: true });
+});
+
+// ========== EVENT DELEGATION ==========
+$('pullList').addEventListener('click', (e) => {
+  const box = e.target.closest('.check-box');
+  if (box) toggleCheck(box.dataset.key);
+});
+
+$('searchResults').addEventListener('click', (e) => {
+  const el = e.target.closest('.search-item[data-idx]');
+  if (el) selectProduct(searchResultsCache[Number(el.dataset.idx)]);
+});
+
+// ========== SERVICE WORKER ==========
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').then(reg => {
-    console.log('SW registered');
-  }).catch(err => {
-    console.log('SW failed');
-  });
+  navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW gagal:', err));
 }
 
-window.onload = () => {
-  document.getElementById('headerDate').innerText = formatDateIndo(getTodayStr());
-  document.getElementById('pullDateFilter').value = getTodayStr();
+// ========== INIT ==========
+window.addEventListener('load', async () => {
+  $('headerDate').innerText = formatDateIndo(getTodayStr());
   selectedPullDate = getTodayStr();
-  document.getElementById('fExp').value = "";
+  $('pullDateFilter').value = selectedPullDate;
+  updateHeaderHeight();
+  window.addEventListener('resize', updateHeaderHeight);
   loadCache();
-  if (dbItems.length > 0) databaseData = dbItems;
-  renderRecent(); renderPullList(); renderExpTodayList(); buildLokasiHistory(); loadAll(); initOfflineDetection(); updateTabBadges();
+  renderAll();
+  initOfflineDetection();
   resetInactivityTimer();
-  
-  console.log("🔮 Expired Control D&D - Magenta Aeon");
-};
+  if (isOnline && offlineQueue.length) await syncOfflineQueue();
+  await loadAll({ silent: true });
+});
 </script>
 </body>
 </html>
